@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IT Sales Intelligence Map v3 — Auto Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+:root{
+  --bg:#0a0e1a;--bg2:#111827;--bg3:#1a2235;--card:#151e2e;
+  --border:rgba(99,179,237,0.13);--border2:rgba(99,179,237,0.28);
+  --accent:#3b82f6;--accent2:#60a5fa;--teal:#14b8a6;--coral:#f97316;
+  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--purple:#8b5cf6;
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+  --font:'Sarabun',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --r:8px;--rl:12px;--sb:340px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+
+/* NAV */
+.nav{height:52px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:12px;flex-shrink:0;z-index:1000;}
+.logo{display:flex;align-items:center;gap:7px;font-weight:700;font-size:14px;color:var(--accent2);}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(34,197,94,.5);animation:pulse 2s infinite;}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5);}70%{box-shadow:0 0 0 6px rgba(34,197,94,0);}100%{box-shadow:0 0 0 0 rgba(34,197,94,0);}}
+.nav-tabs{display:flex;gap:2px;}
+.nt{padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;border:none;background:transparent;font-family:var(--font);transition:all .2s;}
+.nt:hover{background:var(--bg3);color:var(--text);}
+.nt.active{background:rgba(59,130,246,0.15);color:var(--accent2);}
+.nr{margin-left:auto;display:flex;align-items:center;gap:7px;}
+.btn{padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:none;font-family:var(--font);display:flex;align-items:center;gap:5px;transition:all .2s;}
+.btn-p{background:var(--accent);color:#fff;}.btn-p:hover{background:#2563eb;}
+.btn-g{background:transparent;color:var(--text2);border:1px solid var(--border2);}.btn-g:hover{color:var(--text);border-color:var(--accent);}
+.btn-ai{background:rgba(139,92,246,0.2);color:#c4b5fd;border:1px solid rgba(139,92,246,0.35);}.btn-ai:hover{background:rgba(139,92,246,0.35);}
+.btn-auto{background:rgba(34,197,94,0.15);color:var(--green);border:1px solid rgba(34,197,94,0.3);}.btn-auto:hover{background:rgba(34,197,94,0.25);}
+.badge{font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:20px;font-weight:500;}
+.b-red{background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.3);}
+.b-blue{background:rgba(59,130,246,0.15);color:var(--accent2);border:1px solid var(--border2);}
+.b-purple{background:rgba(139,92,246,0.2);color:#c4b5fd;border:1px solid rgba(139,92,246,0.35);}
+.b-green{background:rgba(34,197,94,0.15);color:var(--green);border:1px solid rgba(34,197,94,0.3);}
+.qbadge{background:var(--red);color:#fff;border-radius:10px;font-size:9px;padding:0 4px;font-weight:700;}
+
+/* LAYOUT */
+.main{flex:1;display:flex;overflow:hidden;}
+
+/* SIDEBAR */
+.sb{width:var(--sb);background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;}
+.sbh{padding:10px 12px 8px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.sbt{font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px;}
+.srch{width:100%;padding:7px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:12px;outline:none;transition:border-color .2s;}
+.srch:focus{border-color:var(--accent);}
+.srch::placeholder{color:var(--text3);}
+.fr{display:flex;gap:3px;margin-top:6px;flex-wrap:wrap;}
+.fc{padding:3px 8px;border-radius:20px;font-size:10px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all .2s;font-family:var(--font);}
+.fc:hover{border-color:var(--accent);color:var(--accent2);}
+.fc.act{background:rgba(59,130,246,0.2);border-color:var(--accent);color:var(--accent2);}
+.fc.fa{background:rgba(239,68,68,0.15);border-color:var(--red);color:#fca5a5;}
+.fc.fai{border-color:rgba(34,197,94,0.4);color:var(--green);}
+.ll{flex:1;overflow-y:auto;padding:5px;}
+.ll::-webkit-scrollbar{width:3px;}
+.ll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+/* LEAD CARD */
+.lc{padding:9px 10px;border-radius:var(--rl);border:1px solid var(--border);background:var(--card);margin-bottom:4px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;}
+.lc::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ca,var(--text3));}
+.lc:hover{border-color:var(--border2);background:#1c2740;}
+.lc.sel{border-color:var(--accent);background:rgba(59,130,246,0.08);}
+.lc.tor{--ca:var(--red);}
+.lc.warm{--ca:var(--amber);}
+.lc.progress{--ca:var(--teal);}
+.lc.ai{--ca:var(--green);}
+.lh{display:flex;align-items:flex-start;gap:5px;margin-bottom:3px;}
+.lname{font-size:12px;font-weight:600;color:var(--text);flex:1;line-height:1.3;}
+.sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:3px;}
+.lm{font-size:10px;color:var(--text2);display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+.lt{display:flex;gap:3px;flex-wrap:wrap;margin-top:4px;}
+.tg{font-size:9px;padding:1px 5px;border-radius:10px;font-weight:500;font-family:var(--mono);}
+.hw{background:rgba(139,92,246,0.15);color:#c4b5fd;}
+.sw{background:rgba(20,184,166,0.15);color:#5eead4;}
+.nt2{background:rgba(249,115,22,0.15);color:#fdba74;}
+.cl{background:rgba(59,130,246,0.15);color:var(--accent2);}
+.ttor{background:rgba(239,68,68,0.2);color:#fca5a5;font-weight:700;}
+.bb{margin-top:5px;}
+.bl{font-size:10px;color:var(--text3);margin-bottom:2px;display:flex;justify-content:space-between;}
+.bt{height:2px;background:var(--bg);border-radius:2px;}
+.bf{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--teal));}
+
+/* NEW LEAD DOT */
+.new-dot{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;margin-right:4px;animation:pulse 1.5s infinite;}
+
+/* MAP */
+.ma{flex:1;position:relative;}
+#map{width:100%;height:100%;}
+.dp{width:350px;flex-shrink:0;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .3s ease;position:absolute;right:0;top:0;bottom:0;z-index:500;}
+.dp.open{transform:translateX(0);}
+.dc{position:absolute;top:12px;left:-36px;width:28px;height:28px;border-radius:7px;background:var(--bg2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:13px;transition:all .2s;}
+.ds{flex:1;overflow-y:auto;padding:14px;}
+.ds::-webkit-scrollbar{width:3px;}
+.dss{margin-bottom:12px;}
+.dst{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:5px;padding-bottom:4px;border-bottom:1px solid var(--border);}
+.dr{display:flex;justify-content:space-between;padding:3px 0;}
+.dl{font-size:11px;color:var(--text2);}
+.dv{font-size:11px;color:var(--text);font-weight:500;text-align:right;max-width:55%;}
+.dcn{font-size:15px;font-weight:700;margin-bottom:3px;}
+.dloc{font-size:12px;color:var(--teal);margin-bottom:8px;}
+.sbadge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:600;margin-bottom:8px;}
+.cc{padding:7px 9px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);margin-bottom:4px;}
+.cn{font-size:12px;font-weight:600;}
+.cr{font-size:10px;color:var(--text2);margin-bottom:3px;}
+.ci{font-size:10px;color:var(--accent2);font-family:var(--mono);}
+.ar{display:flex;gap:6px;margin-top:8px;}
+.bt2{padding:6px 10px;font-size:11px;border-radius:6px;}
+.bteal{background:rgba(20,184,166,0.15);color:var(--teal);border:1px solid rgba(20,184,166,0.3);}
+.bteal:hover{background:rgba(20,184,166,0.25);}
+
+/* MAP OVERLAY */
+.statsbar{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(10,14,26,0.92);border:1px solid var(--border);border-radius:10px;padding:6px 14px;display:flex;gap:16px;z-index:400;backdrop-filter:blur(8px);}
+.si{text-align:center;}
+.sn{font-family:var(--mono);font-size:15px;font-weight:600;}
+.sl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;}
+.leg{position:absolute;bottom:14px;left:14px;background:rgba(10,14,26,0.92);border:1px solid var(--border);border-radius:10px;padding:9px 11px;backdrop-filter:blur(8px);z-index:400;}
+.lt2{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:5px;}
+.li{display:flex;align-items:center;gap:5px;margin-bottom:3px;font-size:10px;color:var(--text2);}
+.ld{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+
+/* LAST SYNC */
+.sync-bar{position:absolute;bottom:14px;right:14px;background:rgba(10,14,26,0.92);border:1px solid var(--border);border-radius:8px;padding:6px 10px;z-index:400;font-size:10px;color:var(--text3);}
+
+/* VIEWS */
+#zone-view,#list-view,#monitor-view{display:none;flex:1;overflow-y:auto;padding:16px;background:var(--bg);}
+.vwrap{max-width:1000px;margin:0 auto;}
+.vh{font-size:15px;font-weight:700;margin-bottom:14px;}
+table{width:100%;border-collapse:collapse;}
+th{text-align:left;padding:8px 10px;font-size:10px;color:var(--text3);text-transform:uppercase;border-bottom:1px solid var(--border);}
+td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;}
+tr:hover td{background:var(--bg3);}
+
+/* MONITOR VIEW */
+.monitor-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;}
+.mcard{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:14px;}
+.mct{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;}
+.source-item{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);}
+.source-item:last-child{border-bottom:none;}
+.src-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.src-name{font-size:12px;font-weight:500;flex:1;}
+.src-last{font-size:10px;color:var(--text3);font-family:var(--mono);}
+.src-found{font-size:10px;color:var(--teal);font-family:var(--mono);}
+.log-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;}
+.log-row:last-child{border-bottom:none;}
+.log-time{font-family:var(--mono);color:var(--text3);min-width:80px;}
+.log-src{color:var(--text2);flex:1;}
+.log-status{border-radius:10px;padding:1px 6px;font-size:9px;font-weight:600;}
+.ls-ok{background:rgba(34,197,94,0.15);color:var(--green);}
+.ls-err{background:rgba(239,68,68,0.15);color:#fca5a5;}
+.ls-nc{background:rgba(100,116,139,0.15);color:var(--text2);}
+.run-btn{width:100%;padding:10px;background:rgba(34,197,94,0.15);color:var(--green);border:1px solid rgba(34,197,94,0.3);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);transition:all .2s;margin-bottom:12px;}
+.run-btn:hover{background:rgba(34,197,94,0.25);}
+.run-btn:disabled{opacity:.5;cursor:not-allowed;}
+
+/* MODALS */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,0.75);display:none;align-items:center;justify-content:center;z-index:9000;backdrop-filter:blur(4px);}
+.ov.open{display:flex;}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5);}
+.mh{padding:14px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.mt{font-size:14px;font-weight:700;}
+.mc{background:none;border:none;color:var(--text2);font-size:16px;cursor:pointer;}
+.mb{padding:14px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+.mb::-webkit-scrollbar{width:3px;}
+.mf{padding:11px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:7px;}
+.fg{display:flex;flex-direction:column;gap:4px;}
+.fg.full{grid-column:1/-1;}
+.fl{font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;}
+.fi,.fs,.fta{padding:7px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:12px;outline:none;transition:border-color .2s;}
+.fi:focus,.fs:focus,.fta:focus{border-color:var(--accent);}
+.fs option{background:var(--bg2);}
+.fta{resize:vertical;min-height:55px;}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+.fst{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);padding-bottom:4px;border-bottom:1px solid var(--border);}
+.ng{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}
+.nc{display:flex;align-items:center;gap:4px;padding:5px 7px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;font-size:11px;color:var(--text2);transition:all .2s;}
+.nc input{accent-color:var(--accent);}
+.nc:has(input:checked){border-color:var(--accent);color:var(--text);background:rgba(59,130,246,0.08);}
+
+/* SETUP MODAL */
+.setup-section{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:10px;}
+.setup-section-title{font-size:11px;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;}
+.setup-row{display:flex;gap:8px;align-items:flex-end;}
+.kw-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:10px;background:rgba(59,130,246,0.1);border:1px solid var(--border2);font-size:11px;color:var(--accent2);}
+.kw-rm{cursor:pointer;opacity:.6;font-size:12px;}
+.kw-rm:hover{opacity:1;color:var(--red);}
+.note{font-size:11px;color:var(--text3);background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.15);border-radius:6px;padding:7px 9px;line-height:1.6;}
+
+/* LEAFLET */
+.leaflet-container{background:#0d1525;}
+.leaflet-control-zoom a{background:var(--bg2)!important;color:var(--text)!important;border-color:var(--border)!important;}
+.leaflet-popup-content-wrapper{background:var(--card);border:1px solid var(--border2);border-radius:10px;color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,0.4);}
+.leaflet-popup-tip{background:var(--card);}
+.leaflet-popup-content{margin:11px;font-family:var(--font);}
+.pc{font-size:12px;font-weight:700;margin-bottom:3px;}
+.pl{font-size:10px;color:var(--teal);margin-bottom:5px;}
+.pb{width:100%;padding:5px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(59,130,246,0.2);color:var(--accent2);border:1px solid var(--border2);cursor:pointer;font-family:var(--font);}
+
+/* TOAST */
+.toast{position:fixed;bottom:14px;right:14px;z-index:9999;background:var(--bg2);border:1px solid var(--teal);border-radius:10px;padding:9px 14px;font-size:12px;color:var(--teal);font-weight:500;transform:translateY(50px);opacity:0;transition:all .3s;box-shadow:0 4px 20px rgba(0,0,0,0.3);}
+.toast.show{transform:translateY(0);opacity:1;}
+
+/* REALTIME PULSE */
+@keyframes newpin{0%{transform:scale(1);}50%{transform:scale(1.4);}100%{transform:scale(1);}}
+.new-pin{animation:newpin .6s ease 3;}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="logo"><div class="pulse"></div>IT Sales Map <span style="font-size:10px;font-weight:400;color:var(--text3);margin-left:2px;">v3</span></div>
+  <div class="nav-tabs">
+    <button class="nt active" onclick="setView('map')">🗺 แผนที่</button>
+    <button class="nt" onclick="setView('list')">📋 รายการ</button>
+    <button class="nt" onclick="setView('zone')">📊 Zone</button>
+    <button class="nt" onclick="setView('monitor')">⚡ Auto Monitor</button>
+  </div>
+  <div class="nr">
+    <button class="btn btn-auto" onclick="openSetup()">⚙ ตั้งค่า Monitor</button>
+    <button class="btn btn-ai" onclick="openPasteModal()">✨ AI Paste</button>
+    <span class="badge b-red" id="nav-tor">TOR: 0</span>
+    <span class="badge b-green" id="nav-auto" style="display:none">🤖 Auto: 0</span>
+    <span class="badge b-blue" id="nav-total">Total: 0</span>
+    <button class="btn btn-g" onclick="exportCSV()">⬇ CSV</button>
+    <button class="btn btn-p" onclick="openAddModal()">+ Lead</button>
+  </div>
+</nav>
+
+<div class="main">
+  <div class="sb">
+    <div class="sbh">
+      <div class="sbt">Lead ทั้งหมด</div>
+      <input class="srch" id="srch" placeholder="🔍 ค้นหา..." oninput="filterLeads()">
+      <div class="fr">
+        <button class="fc act" onclick="setFilter('all',this)">ทั้งหมด</button>
+        <button class="fc fa" onclick="setFilter('tor',this)">🔴 TOR</button>
+        <button class="fc" onclick="setFilter('warm',this)">🟡 Warm</button>
+        <button class="fc" onclick="setFilter('progress',this)">🟢 Progress</button>
+        <button class="fc fai" onclick="setFilter('auto',this)">🤖 Auto</button>
+        <button class="fc" onclick="setFilter('cold',this)">⚪ Cold</button>
+      </div>
+    </div>
+    <div class="ll" id="lead-list"></div>
+  </div>
+
+  <div class="ma">
+    <div id="map"></div>
+    <div class="statsbar">
+      <div class="si"><div class="sn" id="s-total" style="color:var(--accent2)">0</div><div class="sl">Leads</div></div>
+      <div class="si"><div class="sn" id="s-tor" style="color:var(--red)">0</div><div class="sl">TOR</div></div>
+      <div class="si"><div class="sn" id="s-warm" style="color:var(--amber)">0</div><div class="sl">Warm</div></div>
+      <div class="si"><div class="sn" id="s-auto" style="color:var(--green)">0</div><div class="sl">Auto</div></div>
+    </div>
+    <div class="leg">
+      <div class="lt2">สถานะ</div>
+      <div class="li"><div class="ld" style="background:var(--red)"></div>มี TOR</div>
+      <div class="li"><div class="ld" style="background:var(--amber)"></div>Warm</div>
+      <div class="li"><div class="ld" style="background:var(--teal)"></div>In Progress</div>
+      <div class="li"><div class="ld" style="background:var(--green)"></div>🤖 Auto</div>
+      <div class="li"><div class="ld" style="background:var(--text3)"></div>Cold</div>
+    </div>
+    <div class="sync-bar" id="sync-bar">⏱ กำลังเชื่อมต่อ...</div>
+    <div class="dp" id="detail-panel">
+      <div class="dc" onclick="closeDetail()">✕</div>
+      <div class="ds" id="detail-content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Zone View -->
+<div id="zone-view"><div class="vwrap"><div class="vh">📊 สรุปตาม Zone / จังหวัด</div><div id="zone-tbl"></div></div></div>
+<!-- List View -->
+<div id="list-view"><div class="vwrap"><div class="vh">📋 รายการ Lead ทั้งหมด</div><table><thead><tr><th>บริษัท</th><th>จังหวัด</th><th>ความต้องการ</th><th>งบ</th><th>TOR</th><th>แหล่ง</th><th>สถานะ</th><th></th></tr></thead><tbody id="list-tbody"></tbody></table></div></div>
+
+<!-- Monitor View -->
+<div id="monitor-view"><div class="vwrap">
+  <div class="vh">⚡ Auto Monitor Dashboard</div>
+  <button class="run-btn" id="run-btn" onclick="runMonitorNow()">▶ รัน Monitor ทันที (Manual Trigger)</button>
+  <div class="monitor-grid">
+    <div class="mcard"><div class="mct">แหล่งข้อมูลที่ Monitor</div><div id="sources-list">กำลังโหลด...</div></div>
+    <div class="mcard"><div class="mct">Log การทำงานล่าสุด</div><div id="monitor-log">กำลังโหลด...</div></div>
+  </div>
+  <div class="mcard"><div class="mct">Lead ที่รอ Review (confidence ต่ำกว่า threshold)</div><div id="pending-list">กำลังโหลด...</div></div>
+</div></div>
+
+<!-- Setup Modal -->
+<div class="ov" id="setup-modal">
+  <div class="modal" style="width:620px;max-height:85vh;">
+    <div class="mh"><div class="mt">⚙ ตั้งค่า Auto Monitor + Supabase</div><button class="mc" onclick="closeModal('setup-modal')">✕</button></div>
+    <div class="mb" style="max-height:70vh;">
+      <div class="note">🔑 ต้องการ: <strong>Supabase Project</strong> (free) + <strong>Anthropic API Key</strong><br>สมัครฟรีที่ supabase.com แล้วสร้าง project ใหม่</div>
+
+      <div class="setup-section">
+        <div class="setup-section-title">Supabase Connection</div>
+        <div class="frow">
+          <div class="fg">
+            <label class="fl">Supabase URL</label>
+            <input class="fi" id="cfg-url" placeholder="https://xxxx.supabase.co" style="font-family:var(--mono);font-size:11px;">
+          </div>
+          <div class="fg">
+            <label class="fl">Supabase Anon Key</label>
+            <input class="fi" id="cfg-key" type="password" placeholder="eyJ..." style="font-family:var(--mono);font-size:11px;">
+          </div>
+        </div>
+        <div style="display:flex;gap:7px;margin-top:8px;">
+          <button class="btn btn-g" style="font-size:11px;" onclick="testSupabase()">🔌 Test Connection</button>
+          <button class="btn btn-p" style="font-size:11px;" onclick="saveConfig()">💾 บันทึก</button>
+        </div>
+      </div>
+
+      <div class="setup-section">
+        <div class="setup-section-title">Anthropic API Key (สำหรับ AI วิเคราะห์)</div>
+        <div class="setup-row">
+          <div class="fg" style="flex:1;">
+            <input class="fi" id="cfg-aikey" type="password" placeholder="sk-ant-api03-..." style="font-family:var(--mono);font-size:11px;">
+          </div>
+          <button class="btn btn-g" style="font-size:11px;" onclick="saveAIKey()">บันทึก Key</button>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:5px;">Key นี้จะบันทึกลง Supabase settings table เพื่อให้ Edge Function ใช้งาน</div>
+      </div>
+
+      <div class="setup-section">
+        <div class="setup-section-title">Monitor Schedule & Auto-Approve</div>
+        <div class="frow">
+          <div class="fg">
+            <label class="fl">รันทุกวันตอน (UTC)</label>
+            <select class="fs" id="cfg-hour">
+              <option value="0">00:00 UTC (07:00 น. ไทย)</option>
+              <option value="2">02:00 UTC (09:00 น. ไทย)</option>
+              <option value="6">06:00 UTC (13:00 น. ไทย)</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label class="fl">Auto-Approve ถ้า confidence ≥</label>
+            <select class="fs" id="cfg-threshold">
+              <option value="90">90% (เข้มงวด)</option>
+              <option value="80" selected>80% (แนะนำ)</option>
+              <option value="70">70% (กว้าง)</option>
+              <option value="0">0% (approve ทั้งหมด)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="setup-section">
+        <div class="setup-section-title">แหล่งข้อมูล (Monitor Sources)</div>
+        <div id="sources-config">กำลังโหลด...</div>
+        <div style="margin-top:10px;">
+          <div class="frow" style="margin-bottom:6px;">
+            <div class="fg"><label class="fl">ชื่อแหล่ง</label><input class="fi" id="new-src-name" placeholder="เช่น GPP ไอที"></div>
+            <div class="fg"><label class="fl">URL</label><input class="fi" id="new-src-url" placeholder="https://..."></div>
+          </div>
+          <div class="fg" style="margin-bottom:6px;">
+            <label class="fl">Keywords (กด Enter เพื่อเพิ่ม)</label>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;padding:5px;background:var(--bg);border-radius:6px;border:1px solid var(--border);min-height:32px;" id="kw-tags"></div>
+            <input class="fi" id="kw-input" placeholder='พิมพ์ keyword แล้วกด Enter เช่น "server"' style="margin-top:5px;" onkeydown="addKeyword(event)">
+          </div>
+          <button class="btn btn-p" style="font-size:11px;" onclick="addSource()">+ เพิ่มแหล่งข้อมูล</button>
+        </div>
+      </div>
+
+      <div class="note" style="margin-top:0;">
+        📋 <strong>ขั้นตอน Deploy Edge Function:</strong><br>
+        1. ติดตั้ง Supabase CLI: <code style="background:var(--bg);padding:1px 4px;border-radius:3px;font-size:10px;">npm install -g supabase</code><br>
+        2. วางไฟล์ <code style="background:var(--bg);padding:1px 4px;border-radius:3px;font-size:10px;">edge-function-auto-monitor.ts</code> ใน <code style="background:var(--bg);padding:1px 4px;border-radius:3px;font-size:10px;">supabase/functions/auto-monitor/index.ts</code><br>
+        3. <code style="background:var(--bg);padding:1px 4px;border-radius:3px;font-size:10px;">supabase functions deploy auto-monitor</code><br>
+        4. ตั้ง Cron: <code style="background:var(--bg);padding:1px 4px;border-radius:3px;font-size:10px;">supabase functions schedule auto-monitor --schedule "0 0 * * *"</code>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-g" onclick="closeModal('setup-modal')">ปิด</button>
+      <button class="btn btn-p" onclick="saveAllSettings()">💾 บันทึกทั้งหมด</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI Paste Modal -->
+<div class="ov" id="paste-modal">
+  <div class="modal" style="width:620px;max-height:85vh;">
+    <div class="mh"><div class="mt">✨ AI Paste — วิเคราะห์ข้อความ</div><button class="mc" onclick="closeModal('paste-modal')">✕</button></div>
+    <div class="mb">
+      <textarea class="fta" id="paste-txt" style="min-height:140px;font-size:12px;" placeholder="วางข้อความประกาศ TOR, โพสต์ Facebook, Email, Line ที่นี่...&#10;&#10;AI จะสกัด: ชื่อบริษัท, จังหวัด, ความต้องการ IT, งบประมาณ, TOR, Deadline, ผู้ติดต่อ"></textarea>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-ai" style="flex:1;justify-content:center;padding:9px;" onclick="pasteAndParse()">✨ วิเคราะห์ด้วย AI</button>
+        <button class="btn btn-g" onclick="document.getElementById('paste-txt').value=''">ล้าง</button>
+      </div>
+      <div id="paste-result"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Lead Modal -->
+<div class="ov" id="add-modal">
+  <div class="modal" style="width:620px;max-height:88vh;">
+    <div class="mh"><div class="mt" id="add-title">➕ เพิ่ม Lead</div><button class="mc" onclick="closeModal('add-modal')">✕</button></div>
+    <div class="mb" style="max-height:72vh;">
+      <div class="fst">ข้อมูลบริษัท</div>
+      <div class="frow">
+        <div class="fg full"><label class="fl">ชื่อบริษัท *</label><input class="fi" id="f-company"></div>
+        <div class="fg"><label class="fl">จังหวัด *</label><select class="fs" id="f-province"></select></div>
+        <div class="fg"><label class="fl">อำเภอ</label><input class="fi" id="f-district"></div>
+        <div class="fg"><label class="fl">ประเภท</label><select class="fs" id="f-orgtype"><option value="private">เอกชน</option><option value="government">ราชการ</option><option value="hospital">โรงพยาบาล</option><option value="education">การศึกษา</option><option value="other">อื่นๆ</option></select></div>
+        <div class="fg"><label class="fl">สถานะ</label><select class="fs" id="f-status"><option value="tor">🔴 TOR</option><option value="warm">🟡 Warm</option><option value="progress">🟢 Progress</option><option value="cold">⚪ Cold</option></select></div>
+      </div>
+      <div class="fst">ความต้องการ IT</div>
+      <div class="ng">
+        <label class="nc"><input type="checkbox" id="n-server"> Server/HW</label>
+        <label class="nc"><input type="checkbox" id="n-software"> Software</label>
+        <label class="nc"><input type="checkbox" id="n-network"> Network</label>
+        <label class="nc"><input type="checkbox" id="n-security"> Security</label>
+        <label class="nc"><input type="checkbox" id="n-cloud"> Cloud</label>
+        <label class="nc"><input type="checkbox" id="n-backup"> Backup</label>
+        <label class="nc"><input type="checkbox" id="n-cctv"> CCTV</label>
+        <label class="nc"><input type="checkbox" id="n-other"> อื่นๆ</label>
+      </div>
+      <div class="fg"><label class="fl">รายละเอียด</label><textarea class="fta" id="f-needs-detail"></textarea></div>
+      <div class="fst">TOR / งบประมาณ</div>
+      <div class="frow">
+        <div class="fg"><label class="fl">TOR</label><select class="fs" id="f-tor"><option value="no">ยังไม่มี</option><option value="yes">มีแล้ว</option><option value="soon">กำลังจัดทำ</option></select></div>
+        <div class="fg"><label class="fl">งบ (ล้านบาท)</label><input class="fi" id="f-budget" type="number" step="0.1"></div>
+        <div class="fg full"><label class="fl">Deadline</label><input class="fi" id="f-deadline" placeholder="เช่น 30 เม.ย. 67"></div>
+        <div class="fg full"><label class="fl">รายละเอียด TOR</label><textarea class="fta" id="f-tor-detail" style="min-height:45px;"></textarea></div>
+      </div>
+      <div class="fst">ผู้ติดต่อ</div>
+      <div class="frow">
+        <div class="fg"><label class="fl">ชื่อ</label><input class="fi" id="f-cname"></div>
+        <div class="fg"><label class="fl">ตำแหน่ง</label><input class="fi" id="f-crole"></div>
+        <div class="fg"><label class="fl">โทร</label><input class="fi" id="f-ctel"></div>
+        <div class="fg"><label class="fl">อีเมล</label><input class="fi" id="f-cemail"></div>
+        <div class="fg"><label class="fl">Sales</label><input class="fi" id="f-sales"></div>
+        <div class="fg"><label class="fl">URL ที่มา</label><input class="fi" id="f-srcurl"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-g" onclick="closeModal('add-modal')">ยกเลิก</button>
+      <button class="btn btn-p" id="add-save-btn" onclick="saveLead()">💾 บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const PROV={
+  "กรุงเทพมหานคร":[13.75,100.50],"กระบี่":[8.09,98.91],"กาญจนบุรี":[14.00,99.54],
+  "กาฬสินธุ์":[16.43,103.51],"กำแพงเพชร":[16.47,99.52],"ขอนแก่น":[16.43,102.84],
+  "จันทบุรี":[12.61,102.10],"ฉะเชิงเทรา":[13.69,101.08],"ชลบุรี":[13.36,100.99],
+  "ชัยนาท":[15.18,100.13],"ชัยภูมิ":[15.81,102.03],"ชุมพร":[10.49,99.18],
+  "เชียงราย":[19.91,99.84],"เชียงใหม่":[18.79,98.98],"ตรัง":[7.56,99.62],
+  "ตราด":[12.24,102.51],"ตาก":[16.88,99.13],"นครนายก":[14.20,101.21],
+  "นครปฐม":[13.82,100.04],"นครพนม":[17.39,104.78],"นครราชสีมา":[14.97,102.10],
+  "นครศรีธรรมราช":[8.43,99.96],"นครสวรรค์":[15.70,100.14],"นนทบุรี":[13.86,100.51],
+  "นราธิวาส":[6.43,101.82],"น่าน":[18.78,100.78],"บึงกาฬ":[18.36,103.65],
+  "บุรีรัมย์":[14.99,103.11],"ปทุมธานี":[14.02,100.53],"ประจวบคีรีขันธ์":[11.81,99.80],
+  "ปราจีนบุรี":[14.05,101.37],"ปัตตานี":[6.87,101.25],"พระนครศรีอยุธยา":[14.35,100.57],
+  "พะเยา":[19.16,99.90],"พัทลุง":[7.62,100.07],"พิจิตร":[16.44,100.35],
+  "พิษณุโลก":[16.83,100.26],"เพชรบุรี":[13.11,99.94],"เพชรบูรณ์":[16.42,101.16],
+  "แพร่":[18.14,100.14],"ภูเก็ต":[7.89,98.40],"มหาสารคาม":[16.19,103.30],
+  "มุกดาหาร":[16.54,104.72],"แม่ฮ่องสอน":[19.30,97.97],"ยโสธร":[15.79,104.15],
+  "ยะลา":[6.54,101.28],"ร้อยเอ็ด":[16.05,103.65],"ระนอง":[9.96,98.63],
+  "ระยอง":[12.68,101.27],"ราชบุรี":[13.54,99.82],"ลพบุรี":[14.80,100.65],
+  "ลำปาง":[18.29,99.49],"ลำพูน":[18.57,99.01],"เลย":[17.49,101.72],
+  "ศรีสะเกษ":[15.12,104.33],"สกลนคร":[17.15,104.14],"สงขลา":[7.19,100.59],
+  "สตูล":[6.62,100.07],"สมุทรปราการ":[13.60,100.60],"สมุทรสงคราม":[13.41,100.00],
+  "สมุทรสาคร":[13.55,100.27],"สระแก้ว":[13.82,102.06],"สระบุรี":[14.53,100.91],
+  "สิงห์บุรี":[14.89,100.40],"สุโขทัย":[17.02,99.82],"สุพรรณบุรี":[14.47,100.12],
+  "สุราษฎร์ธานี":[9.14,99.33],"สุรินทร์":[14.88,103.49],"หนองคาย":[17.88,102.74],
+  "หนองบัวลำภู":[17.20,102.44],"อ่างทอง":[14.59,100.46],"อำนาจเจริญ":[15.86,104.63],
+  "อุดรธานี":[17.41,102.79],"อุตรดิตถ์":[17.62,100.10],"อุทัยธานี":[15.38,100.02],
+  "อุบลราชธานี":[15.24,104.85]
+};
+
+const SC={tor:'#ef4444',warm:'#f59e0b',progress:'#14b8a6',cold:'#64748b',ai_auto:'#22c55e'};
+const SL={tor:'มี TOR',warm:'Warm',progress:'In Progress',cold:'Cold',ai_auto:'Auto'};
+
+// ── State ──
+let sb=null, leads=[], mkrs={}, editId=null, activeFilter='all', map;
+let keywords=[];
+const AI_SYS=`คุณคือ AI ผู้ช่วยทีม Sales IT ตอบเฉพาะ JSON array ไม่มีข้อความอื่น:[{"company":"ชื่อ","province":"จังหวัด","district":"อำเภอหรือnull","orgtype":"private|government|hospital|education|other","status":"tor|warm|progress|cold","needs":[],"needs_detail":"","tor":"yes|soon|no","tor_detail":"","budget":null,"deadline":"","contact_name":"","contact_role":"","contact_tel":"","contact_email":"","confidence":0,"summary":""}]`;
+
+// ── Supabase ──
+function getConfig(){return{url:localStorage.getItem('sb-url')||'',key:localStorage.getItem('sb-key')||'',aikey:localStorage.getItem('sb-aikey')||''};}
+function initSupabase(){
+  const cfg=getConfig();
+  if(!cfg.url||!cfg.key){document.getElementById('sync-bar').textContent='⚠️ ยังไม่ได้ตั้งค่า Supabase';return false;}
+  sb=window.supabase.createClient(cfg.url,cfg.key);
+  return true;
+}
+
+async function loadLeads(){
+  if(!sb){loadFallback();return;}
+  try{
+    const{data,error}=await sb.from('leads').select('*').order('created_at',{ascending:false});
+    if(error)throw error;
+    leads=data||[];
+    render();
+    const t=new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('sync-bar').textContent=`✅ Sync ${t} · ${leads.length} leads`;
+    subscribeRealtime();
+  }catch(e){
+    console.error(e);loadFallback();
+    document.getElementById('sync-bar').textContent='⚠️ Supabase error — ใช้ local mode';
+  }
+}
+
+function loadFallback(){
+  leads=JSON.parse(localStorage.getItem('it-leads-v3')||'[]');
+  if(!leads.length){leads=[
+    {id:'1',company:'ธนาคารกรุงศรีอยุธยา',province:'กรุงเทพมหานคร',district:'จตุจักร',orgtype:'private',status:'tor',needs:['server','network','security'],needs_detail:'Server Rack 20U, Firewall 3 จุด',tor:'yes',tor_detail:'TOR IT-2024-001 ยื่น 30 พ.ค.',budget:8.5,contact_name:'คุณสมชาย',contact_role:'IT Director',contact_tel:'081-234-5678',sales:'นายก้อง',lat:13.87,lng:100.55,source:'manual',approved:true},
+    {id:'2',company:'โรงพยาบาลมหาราชเชียงใหม่',province:'เชียงใหม่',district:'เมือง',orgtype:'government',status:'warm',needs:['server','backup'],needs_detail:'HIS upgrade, NAS backup',tor:'soon',budget:4.2,contact_name:'คุณวิภา',contact_role:'CIO',sales:'แนน',lat:18.80,lng:98.97,source:'manual',approved:true},
+    {id:'3',company:'เทศบาลนครขอนแก่น (Auto)',province:'ขอนแก่น',district:'เมือง',orgtype:'government',status:'tor',needs:['network','cctv'],needs_detail:'Smart City Network + CCTV 300 ตัว',tor:'yes',budget:6.5,source:'ai_auto',source_label:'GPP',approved:true,confidence:88,lat:16.44,lng:102.84},
+  ];}
+  document.getElementById('sync-bar').textContent='💾 Local mode (ไม่มี Supabase)';
+  render();
+}
+
+function subscribeRealtime(){
+  if(!sb)return;
+  sb.channel('leads-rt').on('postgres_changes',{event:'INSERT',schema:'public',table:'leads'},payload=>{
+    const l=payload.new;
+    if(l.approved===false)return;
+    leads.unshift(l);
+    renderList();renderMarkers();updateStats();
+    showToast(`🤖 Lead ใหม่จาก ${l.source_label||'Auto'}: ${l.company}`);
+    // Bounce new pin
+    setTimeout(()=>{if(mkrs[l.id])mkrs[l.id].getElement()?.classList.add('new-pin');},500);
+  }).subscribe();
+}
+
+// ── Map ──
+function initMap(){
+  map=L.map('map',{center:[13.0,101.0],zoom:6});
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'CartoDB',maxZoom:19}).addTo(map);
+}
+function getIcon(l){
+  const color=l.source==='ai_auto'?SC.ai_auto:(SC[l.status]||'#64748b');
+  const r=Math.max(8,Math.min(24,8+(parseFloat(l.budget)||0)*1.0));
+  const pulse=l.status==='tor'?`<circle cx="${r+3}" cy="${r+3}" r="${r+5}" fill="${color}" fill-opacity="0.12"/>`:'';
+  return L.divIcon({html:`<svg xmlns="http://www.w3.org/2000/svg" width="${(r+3)*2+6}" height="${(r+3)*2+6}">${pulse}<circle cx="${r+3}" cy="${r+3}" r="${r}" fill="${color}" fill-opacity="0.22" stroke="${color}" stroke-width="1.5"/><circle cx="${r+3}" cy="${r+3}" r="${r*0.48}" fill="${color}"/></svg>`,className:'',iconSize:[(r+3)*2+6,(r+3)*2+6],iconAnchor:[r+3,r+3]});
+}
+function renderMarkers(){
+  Object.values(mkrs).forEach(m=>m.remove());mkrs={};
+  getFiltered().forEach(l=>{
+    if(!l.lat){const c=PROV[l.province];if(c){l.lat=c[0]+(Math.random()-.5)*.3;l.lng=c[1]+(Math.random()-.5)*.3;}}
+    if(!l.lat||!l.lng)return;
+    const m=L.marker([l.lat,l.lng],{icon:getIcon(l)}).addTo(map);
+    const autoTag=l.source==='ai_auto'?`<span style="background:rgba(34,197,94,0.15);color:#86efac;font-size:9px;padding:1px 5px;border-radius:10px;font-weight:600;">🤖 ${l.source_label||'Auto'}</span>`:'';
+    m.bindPopup(`<div class="pc">${l.company} ${autoTag}</div><div class="pl">📍 ${l.province}${l.district?'·'+l.district:''}</div><div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:5px;">${tagsHTML(l.needs||[])}${l.tor==='yes'?'<span class="tg ttor">TOR</span>':''}</div><div style="font-size:10px;color:#94a3b8;margin-bottom:5px;">${l.budget?'งบ '+l.budget+'M฿':''}</div><button class="pb" onclick="showDetail('${l.id}')">ดูรายละเอียด →</button>`);
+    mkrs[l.id]=m;
+  });
+}
+function tagsHTML(n){const m={server:'hw',software:'sw',network:'nt2',security:'nt2',cloud:'cl',backup:'hw',cctv:'hw',other:'sw'};const lb={server:'HW',software:'SW',network:'NET',security:'SEC',cloud:'CLOUD',backup:'BK',cctv:'CCTV',other:'ETC'};return(n||[]).map(x=>`<span class="tg ${m[x]||'sw'}">${lb[x]||x}</span>`).join('');}
+function needsTxt(n){const lb={server:'Server/HW',software:'Software',network:'Network',security:'Security',cloud:'Cloud',backup:'Backup',cctv:'CCTV',other:'อื่นๆ'};return(n||[]).map(x=>lb[x]||x).join(', ');}
+
+// ── Sidebar ──
+function renderList(){
+  const q=document.getElementById('srch').value.toLowerCase();
+  let fl=getFiltered().filter(l=>!q||l.company.toLowerCase().includes(q)||(l.province||'').includes(q)||(l.district||'').includes(q));
+  const el=document.getElementById('lead-list');
+  if(!fl.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3);font-size:11px;">ไม่พบ Lead ที่ตรงกัน</div>';return;}
+  el.innerHTML=fl.map(l=>{
+    const isAuto=l.source==='ai_auto';
+    const color=isAuto?SC.ai_auto:(SC[l.status]||'#64748b');
+    const cardCls=isAuto?'ai':(l.status||'cold');
+    const budget=parseFloat(l.budget)||0;
+    const autoTag=isAuto?`<span style="font-size:9px;color:var(--green);margin-left:3px;">🤖</span>`:'';
+    return`<div class="lc ${cardCls}" onclick="showDetail('${l.id}')" id="lc-${l.id}">
+      <div class="lh"><div class="lname">${l.company}${autoTag}</div><div class="sdot" style="background:${color}"></div></div>
+      <div class="lm"><span style="color:var(--teal)">📍${l.province}${l.district?'·'+l.district:''}</span>${l.tor==='yes'?'<span style="color:var(--red);font-size:9px;font-weight:700;">TOR</span>':''}</div>
+      <div class="lt">${tagsHTML(l.needs||[])}</div>
+      ${budget>0?`<div class="bb"><div class="bl"><span>งบ</span><span style="font-family:var(--mono)">${budget}M฿</span></div><div class="bt"><div class="bf" style="width:${Math.min(100,budget/20*100)}%"></div></div></div>`:''}
+    </div>`;
+  }).join('');
+}
+function getFiltered(){
+  if(activeFilter==='all')return leads.filter(l=>l.approved!==false);
+  if(activeFilter==='tor')return leads.filter(l=>(l.status==='tor'||l.tor==='yes')&&l.approved!==false);
+  if(activeFilter==='auto')return leads.filter(l=>l.source==='ai_auto'&&l.approved!==false);
+  return leads.filter(l=>l.status===activeFilter&&l.approved!==false);
+}
+function filterLeads(){renderList();renderMarkers();}
+function setFilter(f,el){activeFilter=f;document.querySelectorAll('.fc').forEach(c=>c.classList.remove('act','fa'));el.classList.add(f==='tor'?'fa':'act');filterLeads();}
+
+// ── Detail ──
+function showDetail(id){
+  const l=leads.find(x=>x.id===id);if(!l)return;
+  const isAuto=l.source==='ai_auto';
+  const color=isAuto?SC.ai_auto:(SC[l.status]||'#64748b');
+  document.getElementById('detail-content').innerHTML=`
+    <span class="sbadge" style="background:rgba(59,130,246,0.1);border:1px solid var(--border2);color:var(--accent2);margin-bottom:8px;">● ${SL[l.status]||l.status}</span>
+    ${isAuto?`<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:6px;padding:6px 8px;font-size:10px;color:var(--green);margin-bottom:8px;">🤖 Auto Monitor · ${l.source_label||'AI'} · confidence ${l.confidence||0}%${l.source_url?`<br><a href="${l.source_url}" style="color:var(--accent2);font-size:9px;word-break:break-all;">${l.source_url.substring(0,55)}...</a>`:''}</div>`:''}
+    <div class="dcn">${l.company}</div>
+    <div class="dloc">📍 ${l.province}${l.district?' · '+l.district:''}</div>
+    ${l.needs_detail?`<div style="font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:8px;padding:7px;background:var(--bg3);border-radius:6px;">${l.needs_detail}</div>`:''}
+    <div class="lt" style="margin-bottom:10px;">${tagsHTML(l.needs||[])}</div>
+    <div class="dss">
+      <div class="dst">TOR / งบประมาณ</div>
+      <div class="dr"><span class="dl">TOR</span><span class="dv" style="color:${l.tor==='yes'?'var(--red)':l.tor==='soon'?'var(--amber)':'var(--text2)'}">${{yes:'มีแล้ว ✓',soon:'กำลังจัดทำ',no:'ยังไม่มี'}[l.tor]||'-'}</span></div>
+      <div class="dr"><span class="dl">งบประมาณ</span><span class="dv" style="font-family:var(--mono);color:var(--accent2)">${l.budget?l.budget+'M฿':'-'}</span></div>
+      ${l.deadline?`<div class="dr"><span class="dl">Deadline</span><span class="dv" style="color:var(--amber)">${l.deadline}</span></div>`:''}
+      ${l.tor_detail?`<div style="font-size:10px;color:var(--text2);margin-top:5px;padding:6px;background:var(--bg3);border-radius:5px;line-height:1.6;">${l.tor_detail}</div>`:''}
+    </div>
+    ${l.contact_name?`<div class="dss"><div class="dst">ผู้ติดต่อ</div><div class="cc"><div class="cn">${l.contact_name}</div><div class="cr">${l.contact_role||''}</div>${l.contact_tel?`<div class="ci">📞 ${l.contact_tel}</div>`:''}${l.contact_email?`<div class="ci">✉ ${l.contact_email}</div>`:''}</div></div>`:''}
+    <div class="ar">
+      <button class="btn btn-g bt2" style="flex:1" onclick="editLead('${l.id}')">✏️ แก้ไข</button>
+      <button class="btn bteal bt2" style="flex:1" onclick="flyTo('${l.id}')">🗺 แผนที่</button>
+    </div>
+    <div style="margin-top:6px;"><button class="btn btn-g bt2" style="width:100%;color:var(--red);border-color:rgba(239,68,68,0.3);" onclick="deleteLead('${l.id}')">🗑 ลบ</button></div>
+  `;
+  document.getElementById('detail-panel').classList.add('open');
+  document.querySelectorAll('.lc').forEach(c=>c.classList.remove('sel'));
+  const card=document.getElementById('lc-'+id);
+  if(card){card.classList.add('sel');card.scrollIntoView({behavior:'smooth',block:'nearest'});}
+}
+function closeDetail(){document.getElementById('detail-panel').classList.remove('open');document.querySelectorAll('.lc').forEach(c=>c.classList.remove('sel'));}
+function flyTo(id){const l=leads.find(x=>x.id===id);if(!l||!l.lat)return;setView('map');map.flyTo([l.lat,l.lng],12,{duration:1.2});setTimeout(()=>mkrs[id]?.openPopup(),1300);closeDetail();}
+
+// ── Add / Edit ──
+function openAddModal(editid){
+  editId=editid||null;
+  document.getElementById('add-title').textContent=editid?'✏️ แก้ไข Lead':'➕ เพิ่ม Lead';
+  const psel=document.getElementById('f-province');
+  psel.innerHTML='<option value="">-- เลือกจังหวัด --</option>'+Object.keys(PROV).sort().map(p=>`<option value="${p}">${p}</option>`).join('');
+  ['company','province','district','orgtype','status','needs-detail','tor','tor-detail','budget','deadline','cname','crole','ctel','cemail','sales','srcurl'].forEach(f=>{const el=document.getElementById('f-'+f);if(el)el.value='';});
+  ['server','software','network','security','cloud','backup','cctv','other'].forEach(n=>{const el=document.getElementById('n-'+n);if(el)el.checked=false;});
+  if(editid){
+    const l=leads.find(x=>x.id===editid);
+    if(l){
+      document.getElementById('f-company').value=l.company||'';
+      document.getElementById('f-province').value=l.province||'';
+      document.getElementById('f-district').value=l.district||'';
+      document.getElementById('f-orgtype').value=l.orgtype||'other';
+      document.getElementById('f-status').value=l.status||'cold';
+      document.getElementById('f-needs-detail').value=l.needs_detail||'';
+      document.getElementById('f-tor').value=l.tor||'no';
+      document.getElementById('f-tor-detail').value=l.tor_detail||'';
+      document.getElementById('f-budget').value=l.budget||'';
+      document.getElementById('f-deadline').value=l.deadline||'';
+      document.getElementById('f-cname').value=l.contact_name||'';
+      document.getElementById('f-crole').value=l.contact_role||'';
+      document.getElementById('f-ctel').value=l.contact_tel||'';
+      document.getElementById('f-cemail').value=l.contact_email||'';
+      document.getElementById('f-sales').value=l.sales||'';
+      document.getElementById('f-srcurl').value=l.source_url||'';
+      (l.needs||[]).forEach(n=>{const el=document.getElementById('n-'+n);if(el)el.checked=true;});
+    }
+  }
+  document.getElementById('add-modal').classList.add('open');
+}
+function editLead(id){closeDetail();openAddModal(id);}
+async function saveLead(){
+  const company=document.getElementById('f-company').value.trim();
+  const province=document.getElementById('f-province').value;
+  if(!company||!province){showToast('⚠️ กรุณากรอกชื่อบริษัทและจังหวัด');return;}
+  const needs=['server','software','network','security','cloud','backup','cctv','other'].filter(n=>document.getElementById('n-'+n)?.checked);
+  const coords=PROV[province];
+  const data={
+    company,province,
+    district:document.getElementById('f-district').value.trim()||null,
+    orgtype:document.getElementById('f-orgtype').value,
+    status:document.getElementById('f-status').value,
+    needs,needs_detail:document.getElementById('f-needs-detail').value.trim()||null,
+    tor:document.getElementById('f-tor').value,
+    tor_detail:document.getElementById('f-tor-detail').value.trim()||null,
+    budget:parseFloat(document.getElementById('f-budget').value)||null,
+    deadline:document.getElementById('f-deadline').value.trim()||null,
+    contact_name:document.getElementById('f-cname').value.trim()||null,
+    contact_role:document.getElementById('f-crole').value.trim()||null,
+    contact_tel:document.getElementById('f-ctel').value.trim()||null,
+    contact_email:document.getElementById('f-cemail').value.trim()||null,
+    sales:document.getElementById('f-sales').value.trim()||null,
+    source_url:document.getElementById('f-srcurl').value.trim()||null,
+    source:'manual',approved:true,
+    lat:coords?coords[0]+(Math.random()-.5)*.2:null,
+    lng:coords?coords[1]+(Math.random()-.5)*.2:null,
+  };
+  if(sb){
+    if(editId){await sb.from('leads').update(data).eq('id',editId);}
+    else{await sb.from('leads').insert(data);}
+    await loadLeads();
+  }else{
+    if(editId){const i=leads.findIndex(l=>l.id===editId);if(i!==-1){data.lat=leads[i].lat||data.lat;data.lng=leads[i].lng||data.lng;leads[i]={...leads[i],...data};}}
+    else{leads.unshift({id:'l'+Date.now(),...data});}
+    localStorage.setItem('it-leads-v3',JSON.stringify(leads));
+    render();
+  }
+  closeModal('add-modal');showToast(editId?'✅ แก้ไขเรียบร้อย':'✅ เพิ่ม Lead เรียบร้อย');editId=null;
+}
+async function deleteLead(id){
+  if(!confirm('ยืนยันลบ Lead นี้?'))return;
+  if(sb){await sb.from('leads').delete().eq('id',id);}
+  leads=leads.filter(l=>l.id!==id);
+  if(!sb)localStorage.setItem('it-leads-v3',JSON.stringify(leads));
+  render();closeDetail();showToast('🗑 ลบเรียบร้อย');
+}
+
+// ── Stats ──
+function updateStats(){
+  const tor=leads.filter(l=>l.status==='tor'&&l.approved!==false).length;
+  const warm=leads.filter(l=>l.status==='warm'&&l.approved!==false).length;
+  const auto=leads.filter(l=>l.source==='ai_auto'&&l.approved!==false).length;
+  const total=leads.filter(l=>l.approved!==false).length;
+  document.getElementById('s-total').textContent=total;
+  document.getElementById('s-tor').textContent=tor;
+  document.getElementById('s-warm').textContent=warm;
+  document.getElementById('s-auto').textContent=auto;
+  document.getElementById('nav-tor').textContent='TOR: '+tor;
+  document.getElementById('nav-total').textContent='Total: '+total;
+  const ab=document.getElementById('nav-auto');
+  ab.textContent='🤖 Auto: '+auto;ab.style.display=auto>0?'':'none';
+}
+
+// ── Monitor View ──
+async function loadMonitorView(){
+  if(!sb){document.getElementById('sources-list').innerHTML='<div style="color:var(--text3);font-size:11px;">ต้องตั้งค่า Supabase ก่อน</div>';return;}
+  const{data:srcs}=await sb.from('monitor_sources').select('*').order('name');
+  const{data:logs}=await sb.from('monitor_logs').select('*').order('run_at',{ascending:false}).limit(10);
+  const{data:pending}=await sb.from('leads').select('*').eq('approved',false).order('created_at',{ascending:false}).limit(20);
+
+  document.getElementById('sources-list').innerHTML=(srcs||[]).map(s=>`<div class="source-item">
+    <div class="src-dot" style="background:${s.active?'var(--green)':'var(--text3)'}"></div>
+    <div style="flex:1;"><div class="src-name">${s.name}</div><div style="font-size:10px;color:var(--text3);font-family:var(--mono);word-break:break-all;">${s.url.substring(0,50)}...</div></div>
+    <div style="text-align:right;"><div class="src-found">+${s.last_found||0} leads</div><div class="src-last">${s.last_checked?new Date(s.last_checked).toLocaleDateString('th-TH'):'-'}</div></div>
+    <button class="btn btn-g" style="font-size:10px;padding:3px 7px;margin-left:4px;" onclick="deleteSource('${s.id}')" title="ลบ">✕</button>
+  </div>`).join('')||'<div style="color:var(--text3);font-size:11px;">ยังไม่มีแหล่งข้อมูล</div>';
+
+  document.getElementById('monitor-log').innerHTML=(logs||[]).map(l=>`<div class="log-row">
+    <span class="log-time">${new Date(l.run_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}</span>
+    <span class="log-src">${l.source_name||'—'}</span>
+    <span class="log-status ${l.status==='success'?'ls-ok':l.status==='error'?'ls-err':'ls-nc'}">${l.status==='success'?'+'+l.leads_new:l.status}</span>
+  </div>`).join('')||'<div style="color:var(--text3);font-size:11px;">ยังไม่มี log</div>';
+
+  document.getElementById('pending-list').innerHTML=(pending||[]).length?
+    (pending||[]).map(l=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:11px;">
+      <div style="flex:1;"><div style="font-weight:600;">${l.company}</div><div style="color:var(--teal);">📍${l.province} · ${l.source_label||'Auto'} · ${l.confidence||0}%</div></div>
+      <button class="btn btn-p" style="font-size:10px;padding:3px 8px;" onclick="approveLead('${l.id}')">✅ Approve</button>
+      <button class="btn btn-g" style="font-size:10px;padding:3px 8px;color:var(--red);" onclick="rejectLead('${l.id}')">✕</button>
+    </div>`).join(''):
+    '<div style="color:var(--green);font-size:11px;padding:8px 0;">✅ ไม่มี Lead รอ Review</div>';
+}
+
+async function approveLead(id){
+  if(sb)await sb.from('leads').update({approved:true}).eq('id',id);
+  const l=leads.find(x=>x.id===id);if(l)l.approved=true;
+  render();loadMonitorView();showToast('✅ Approved!');
+}
+async function rejectLead(id){
+  if(sb)await sb.from('leads').delete().eq('id',id);
+  leads=leads.filter(l=>l.id!==id);
+  render();loadMonitorView();showToast('🗑 ลบแล้ว');
+}
+
+async function runMonitorNow(){
+  const cfg=getConfig();
+  if(!cfg.url){showToast('⚠️ ตั้งค่า Supabase ก่อน');return;}
+  const btn=document.getElementById('run-btn');
+  btn.disabled=true;btn.textContent='⏳ กำลังรัน...';
+  try{
+    const fnUrl=cfg.url.replace('supabase.co','functions.supabase.co')+'/auto-monitor';
+    const res=await fetch(fnUrl,{method:'POST',headers:{'Authorization':'Bearer '+cfg.key,'Content-Type':'application/json'}});
+    const d=await res.json();
+    if(d.success){showToast(`✅ รันเสร็จ! พบ ${d.total_new_leads} lead ใหม่`);}
+    else showToast('⚠️ Error: '+JSON.stringify(d));
+    await loadLeads();await loadMonitorView();
+  }catch(e){showToast('❌ ไม่สามารถเรียก Edge Function ได้: '+e.message);}
+  btn.disabled=false;btn.textContent='▶ รัน Monitor ทันที (Manual Trigger)';
+}
+
+async function deleteSource(id){
+  if(!confirm('ลบแหล่งข้อมูลนี้?'))return;
+  if(sb)await sb.from('monitor_sources').delete().eq('id',id);
+  loadMonitorView();showToast('🗑 ลบแล้ว');
+}
+
+// ── Setup ──
+function openSetup(){
+  const cfg=getConfig();
+  document.getElementById('cfg-url').value=cfg.url||'';
+  document.getElementById('cfg-key').value=cfg.key||'';
+  document.getElementById('cfg-aikey').value=cfg.aikey||'';
+  document.getElementById('setup-modal').classList.add('open');
+  loadSourcesConfig();
+}
+async function loadSourcesConfig(){
+  if(!sb){document.getElementById('sources-config').innerHTML='<div style="color:var(--text3);font-size:11px;">บันทึก Supabase config ก่อน</div>';return;}
+  const{data:srcs}=await sb.from('monitor_sources').select('id,name,url,active');
+  document.getElementById('sources-config').innerHTML=(srcs||[]).map(s=>`<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px;">
+    <div style="width:7px;height:7px;border-radius:50%;background:${s.active?'var(--green)':'var(--text3)'};flex-shrink:0;"></div>
+    <div style="flex:1;">${s.name}</div>
+    <button class="btn btn-g" style="font-size:10px;padding:2px 6px;color:var(--red);" onclick="deleteSourceSetup('${s.id}')">ลบ</button>
+  </div>`).join('')||'ยังไม่มีแหล่งข้อมูล';
+}
+async function deleteSourceSetup(id){await deleteSource(id);loadSourcesConfig();}
+
+function saveConfig(){
+  localStorage.setItem('sb-url',document.getElementById('cfg-url').value.trim());
+  localStorage.setItem('sb-key',document.getElementById('cfg-key').value.trim());
+  sb=null;if(initSupabase()){loadLeads();showToast('✅ บันทึกและเชื่อมต่อ Supabase แล้ว');}
+}
+async function saveAIKey(){
+  const key=document.getElementById('cfg-aikey').value.trim();
+  localStorage.setItem('sb-aikey',key);
+  if(sb)await sb.from('settings').upsert({key:'anthropic_key',value:key});
+  showToast('✅ บันทึก API Key แล้ว');
+}
+async function saveAllSettings(){
+  saveConfig();
+  await saveAIKey();
+  if(sb){
+    await sb.from('settings').upsert({key:'auto_approve_threshold',value:document.getElementById('cfg-threshold').value});
+    await sb.from('settings').upsert({key:'run_hour',value:document.getElementById('cfg-hour').value});
+  }
+  showToast('✅ บันทึกทั้งหมดแล้ว');
+}
+async function testSupabase(){
+  const url=document.getElementById('cfg-url').value.trim();
+  const key=document.getElementById('cfg-key').value.trim();
+  if(!url||!key){showToast('⚠️ ใส่ URL และ Key ก่อน');return;}
+  try{
+    const tmp=window.supabase.createClient(url,key);
+    const{error}=await tmp.from('settings').select('key').limit(1);
+    if(error)throw error;
+    showToast('✅ เชื่อมต่อ Supabase สำเร็จ!');
+  }catch(e){showToast('❌ เชื่อมต่อไม่ได้: '+e.message);}
+}
+
+// Keywords
+const kws=[];
+function addKeyword(e){
+  if(e.key!=='Enter')return;e.preventDefault();
+  const v=document.getElementById('kw-input').value.trim();
+  if(!v||kws.includes(v))return;
+  kws.push(v);renderKwTags();document.getElementById('kw-input').value='';
+}
+function renderKwTags(){
+  document.getElementById('kw-tags').innerHTML=kws.map((k,i)=>`<span class="kw-tag">${k}<span class="kw-rm" onclick="kws.splice(${i},1);renderKwTags()">×</span></span>`).join('');
+}
+async function addSource(){
+  const name=document.getElementById('new-src-name').value.trim();
+  const url=document.getElementById('new-src-url').value.trim();
+  if(!name||!url){showToast('⚠️ ใส่ชื่อและ URL');return;}
+  const data={name,url,source_type:'web',keywords:kws,active:true};
+  if(sb)await sb.from('monitor_sources').insert(data);
+  kws.length=0;renderKwTags();
+  document.getElementById('new-src-name').value='';document.getElementById('new-src-url').value='';
+  loadSourcesConfig();showToast('✅ เพิ่มแหล่งข้อมูลแล้ว');
+}
+
+// ── AI Paste ──
+function openPasteModal(){document.getElementById('paste-modal').classList.add('open');}
+async function pasteAndParse(){
+  const txt=document.getElementById('paste-txt').value.trim();
+  if(!txt){showToast('⚠️ ใส่ข้อความก่อน');return;}
+  const aikey=getConfig().aikey||localStorage.getItem('it-api-key')||'';
+  if(!aikey){showToast('⚠️ ใส่ Anthropic API Key ในการตั้งค่าก่อน');return;}
+  document.getElementById('paste-result').innerHTML='<div style="padding:14px;color:var(--text2);font-size:12px;display:flex;align-items:center;gap:8px;"><div style="width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--purple);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0;"></div>AI กำลังวิเคราะห์...</div>';
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':aikey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,messages:[{role:'user',content:AI_SYS+'\n\nวิเคราะห์:\n'+txt}]})});
+    const d=await res.json();
+    const raw=d.content[0]?.text||'[]';
+    const arr=JSON.parse(raw.replace(/```json|```/g,'').trim());
+    if(!arr.length){document.getElementById('paste-result').innerHTML='<div style="color:var(--amber);font-size:12px;padding:8px;">ไม่พบข้อมูล IT Requirement</div>';return;}
+    const results=arr.map(item=>`<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px;margin-top:8px;">
+      <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${item.company}</div>
+      <div style="font-size:11px;color:var(--teal);margin-bottom:6px;">📍 ${item.province}${item.district?' · '+item.district:''}</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">${tagsHTML(item.needs||[])}</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px;">${item.needs_detail||''}</div>
+      <div style="display:flex;gap:6px;font-size:10px;color:var(--text3);margin-bottom:8px;">${item.budget?'งบ: '+item.budget+'M฿':''} ${item.deadline?'· Deadline: '+item.deadline:''} ${item.tor==='yes'?'· <span style="color:var(--red)">TOR ✓</span>':''}</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:6px;">AI Confidence: <span style="color:${(item.confidence||0)>80?'var(--green)':'var(--amber)'};font-family:var(--mono);">${item.confidence||0}%</span></div>
+      <button onclick="approveFromPaste(${JSON.stringify(item).replace(/"/g,'&quot;')})" class="btn btn-p" style="width:100%;justify-content:center;font-size:12px;padding:7px;">✅ เพิ่มเข้า Map</button>
+    </div>`).join('');
+    document.getElementById('paste-result').innerHTML=results;
+  }catch(e){document.getElementById('paste-result').innerHTML=`<div style="color:var(--red);font-size:11px;padding:8px;">❌ ${e.message}</div>`;}
+}
+async function approveFromPaste(item){
+  const coords=PROV[item.province]||[13,101];
+  const data={company:item.company,province:item.province,district:item.district||null,orgtype:item.orgtype||'other',status:item.status||'cold',needs:item.needs||[],needs_detail:item.needs_detail||null,tor:item.tor||'no',tor_detail:item.tor_detail||null,budget:item.budget||null,deadline:item.deadline||null,contact_name:item.contact_name||null,contact_role:item.contact_role||null,contact_tel:item.contact_tel||null,contact_email:item.contact_email||null,source:'ai_auto',source_label:'AI Paste',confidence:item.confidence||0,approved:true,lat:coords[0]+(Math.random()-.5)*.25,lng:coords[1]+(Math.random()-.5)*.25};
+  if(sb){await sb.from('leads').insert(data);await loadLeads();}
+  else{leads.unshift({id:'p'+Date.now(),...data});localStorage.setItem('it-leads-v3',JSON.stringify(leads));render();}
+  showToast('✅ เพิ่ม Lead เรียบร้อย!');
+}
+
+// ── View Switching ──
+function setView(v){
+  document.querySelectorAll('.nt').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.nt')[['map','list','zone','monitor'].indexOf(v)].classList.add('active');
+  const sb2=document.querySelector('.sb');const ma=document.querySelector('.ma');
+  const lv=document.getElementById('list-view');const zv=document.getElementById('zone-view');const mv=document.getElementById('monitor-view');
+  sb2.style.display=v==='map'?'':'none';ma.style.display=v==='map'?'':'none';
+  lv.style.display=v==='list'?'flex':'none';zv.style.display=v==='zone'?'flex':'none';mv.style.display=v==='monitor'?'flex':'none';
+  if(v==='map')setTimeout(()=>map.invalidateSize(),100);
+  if(v==='zone')renderZone();if(v==='list')renderListView();if(v==='monitor')loadMonitorView();
+}
+function renderZone(){
+  const z={};leads.filter(l=>l.approved!==false).forEach(l=>{if(!z[l.province])z[l.province]={t:0,tor:0,w:0,b:0,auto:0};z[l.province].t++;if(l.status==='tor')z[l.province].tor++;if(l.status==='warm')z[l.province].w++;z[l.province].b+=parseFloat(l.budget)||0;if(l.source==='ai_auto')z[l.province].auto++;});
+  const sorted=Object.entries(z).sort((a,b)=>b[1].tor-a[1].tor||b[1].t-a[1].t);
+  document.getElementById('zone-tbl').innerHTML=`<table><thead><tr><th>จังหวัด</th><th>Leads</th><th style="color:var(--red)">TOR</th><th style="color:var(--amber)">Warm</th><th style="color:var(--green)">Auto</th><th>งบรวม</th><th></th></tr></thead><tbody>${sorted.map(([p,x])=>`<tr><td style="font-weight:600;">📍 ${p}</td><td style="font-family:var(--mono);">${x.t}</td><td style="font-family:var(--mono);color:var(--red);">${x.tor||'-'}</td><td style="font-family:var(--mono);color:var(--amber);">${x.w||'-'}</td><td style="font-family:var(--mono);color:var(--green);">${x.auto||'-'}</td><td style="font-family:var(--mono);color:var(--accent2);">${x.b?x.b.toFixed(1)+'M฿':'-'}</td><td><button class="btn btn-g" style="font-size:10px;padding:3px 7px;" onclick="flyProv('${p}')">แผนที่</button></td></tr>`).join('')}</tbody></table>`;
+}
+function renderListView(){
+  document.getElementById('list-tbody').innerHTML=leads.filter(l=>l.approved!==false).map(l=>`<tr><td style="font-weight:600;">${l.company}${l.source==='ai_auto'?'<span style="font-size:9px;color:var(--green);margin-left:3px;">🤖</span>':''}</td><td style="color:var(--teal);">${l.province}${l.district?' · '+l.district:''}</td><td>${tagsHTML(l.needs||[])}</td><td style="font-family:var(--mono);color:var(--accent2);">${l.budget?l.budget+'M฿':'-'}</td><td style="color:${l.tor==='yes'?'var(--red)':l.tor==='soon'?'var(--amber)':'var(--text3)'};">${{yes:'มี',soon:'กำลัง',no:'-'}[l.tor]||'-'}</td><td style="font-size:10px;color:var(--text3);">${l.source==='ai_auto'?'🤖 '+l.source_label:'Manual'}</td><td><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${l.source==='ai_auto'?SC.ai_auto:(SC[l.status]||'#64748b')};margin-right:4px;"></span>${SL[l.status]||l.status}</td><td><button class="btn btn-g" style="font-size:10px;padding:3px 7px;" onclick="showDetail('${l.id}')">ดู</button></td></tr>`).join('');
+}
+function flyProv(p){setView('map');const c=PROV[p];if(c)map.flyTo(c,10,{duration:1.2});}
+function exportCSV(){
+  const rows=[['บริษัท','จังหวัด','อำเภอ','ประเภท','สถานะ','ความต้องการ','TOR','งบ','Deadline','ผู้ติดต่อ','โทร','อีเมล','Sales','แหล่งที่มา']];
+  leads.filter(l=>l.approved!==false).forEach(l=>rows.push([l.company,l.province,l.district||'',l.orgtype,SL[l.status]||l.status,needsTxt(l.needs),{yes:'มีแล้ว',soon:'กำลัง',no:'ยังไม่มี'}[l.tor]||'',l.budget||'',l.deadline||'',l.contact_name||'',l.contact_tel||'',l.contact_email||'',l.sales||'',l.source==='ai_auto'?'Auto: '+(l.source_label||''):'Manual']));
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);a.download=`it-leads-${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  showToast('⬇️ Export เรียบร้อย');
+}
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
+function render(){renderList();renderMarkers();updateStats();}
+
+window.addEventListener('load',()=>{
+  initMap();
+  if(initSupabase()){loadLeads();}else{loadFallback();}
+  document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
+});
+</script>
+</body>
+</html>
