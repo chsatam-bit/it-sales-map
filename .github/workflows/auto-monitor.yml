@@ -1,0 +1,74 @@
+# ═══════════════════════════════════════════════════════════
+#  IT SALES MAP — GITHUB ACTIONS AUTO MONITOR
+#  ไฟล์: .github/workflows/auto-monitor.yml
+#
+#  วิธีใช้:
+#  1. สร้าง GitHub repo (public = ฟรีไม่จำกัด)
+#  2. วางไฟล์นี้ที่ .github/workflows/auto-monitor.yml
+#  3. ไปที่ Settings > Secrets and variables > Actions
+#  4. เพิ่ม Secrets ดังนี้:
+#     - SUPABASE_URL     : https://xxxx.supabase.co
+#     - SUPABASE_KEY     : eyJ... (anon key)
+#     - ANTHROPIC_KEY    : sk-ant-api03-...
+#
+#  รันอัตโนมัติทุกวัน 00:00 UTC (07:00 น. ไทย)
+#  + รัน keep-alive ทุก 3 วัน ป้องกัน Supabase pause
+# ═══════════════════════════════════════════════════════════
+
+name: IT Sales — Auto Monitor
+
+on:
+  schedule:
+    # รันทุกวัน 00:00 UTC = 07:00 น. ไทย
+    - cron: '0 0 * * *'
+  # เผื่อกด Run manually จาก GitHub UI
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Mode: monitor | keepalive | both'
+        required: false
+        default: 'both'
+
+jobs:
+  # ── Job 1: Auto Monitor ──────────────────────────────────
+  monitor:
+    name: Scan & Parse IT Leads
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install @supabase/supabase-js node-fetch
+
+      - name: Run Auto Monitor
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_KEY }}
+        run: node scripts/monitor.js
+
+      - name: Keep Supabase Alive (ping every 3 days)
+        if: github.event.schedule == '0 0 */3 * *' || github.event_name == 'workflow_dispatch'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          echo "Pinging Supabase to prevent auto-pause..."
+          curl -s "$SUPABASE_URL/rest/v1/settings?select=key&limit=1" \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_KEY" \
+            -o /dev/null -w "HTTP Status: %{http_code}\n"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "✅ Monitor run completed at $(date -u)"
+          echo "🕐 Next run: tomorrow 00:00 UTC (07:00 น. ไทย)"
