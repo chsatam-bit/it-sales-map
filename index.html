@@ -592,21 +592,64 @@ function setFilter(f,el){activeFilter=f;document.querySelectorAll('.fc').forEach
 function showDetail(id){
   const l=leads.find(x=>x.id===id);if(!l)return;
   const isAuto=l.source==='ai_auto';
-  const color=isAuto?SC.ai_auto:(SC[l.status]||'#64748b');
+
+  // คำนวณ days remaining ถึง deadline
+  let deadlineBanner='';
+  if(l.deadline){
+    const parts=l.deadline.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+    if(parts){
+      let y=parseInt(parts[3]);if(y<100)y+=2500;if(y>2400)y-=543;
+      const d=new Date(y,parseInt(parts[2])-1,parseInt(parts[1]));
+      const diff=Math.ceil((d-Date.now())/(1000*60*60*24));
+      const color=diff<=3?'var(--red)':diff<=7?'var(--amber)':'var(--teal)';
+      const label=diff<0?`เลยกำหนด ${Math.abs(diff)} วัน`:diff===0?'วันนี้!':diff<=7?`อีก ${diff} วัน`:`อีก ${diff} วัน`;
+      deadlineBanner=`<div style="background:${diff<=3?'rgba(239,68,68,0.12)':'rgba(245,158,11,0.1)'};border:1px solid ${color};border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:18px;">${diff<=0?'🚨':diff<=3?'⚠️':'📅'}</span>
+        <div><div style="font-size:11px;color:var(--text2);">Deadline</div>
+        <div style="font-size:14px;font-weight:700;color:${color};">${l.deadline} <span style="font-size:11px;font-weight:400;">(${label})</span></div></div>
+      </div>`;
+    }
+  }
+
   document.getElementById('detail-content').innerHTML=`
-    <span class="sbadge" style="background:rgba(59,130,246,0.1);border:1px solid var(--border2);color:var(--accent2);margin-bottom:8px;">● ${SL[l.status]||l.status}</span>
-    ${isAuto?`<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:6px;padding:6px 8px;font-size:10px;color:var(--green);margin-bottom:8px;">🤖 Auto Monitor · ${l.source_label||'AI'} · confidence ${l.confidence||0}%${l.source_url?`<br><a href="${l.source_url}" style="color:var(--accent2);font-size:9px;word-break:break-all;">${l.source_url.substring(0,55)}...</a>`:''}</div>`:''}
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+      <span class="sbadge" style="background:rgba(59,130,246,0.1);border:1px solid var(--border2);color:var(--accent2);">● ${SL[l.status]||l.status}</span>
+      ${l.tor==='yes'?'<span class="sbadge" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;">🔴 มี TOR</span>':''}
+      ${isAuto?'<span class="sbadge" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:var(--green);">🤖 Auto</span>':''}
+    </div>
+
     <div class="dcn">${l.company}</div>
     <div class="dloc">📍 ${l.province}${l.district?' · '+l.district:''}</div>
-    ${l.needs_detail?`<div style="font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:8px;padding:7px;background:var(--bg3);border-radius:6px;">${l.needs_detail}</div>`:''}
+
+    ${deadlineBanner}
+
+    ${l.needs_detail?`<div style="font-size:11px;color:var(--text2);line-height:1.7;margin-bottom:8px;padding:8px;background:var(--bg3);border-radius:6px;border:1px solid var(--border);">${l.needs_detail}</div>`:''}
     <div class="lt" style="margin-bottom:10px;">${tagsHTML(l.needs||[])}</div>
+
     <div class="dss">
       <div class="dst">TOR / งบประมาณ</div>
       <div class="dr"><span class="dl">TOR</span><span class="dv" style="color:${l.tor==='yes'?'var(--red)':l.tor==='soon'?'var(--amber)':'var(--text2)'}">${{yes:'มีแล้ว ✓',soon:'กำลังจัดทำ',no:'ยังไม่มี'}[l.tor]||'-'}</span></div>
-      <div class="dr"><span class="dl">งบประมาณ</span><span class="dv" style="font-family:var(--mono);color:var(--accent2)">${l.budget?l.budget+'M฿':'-'}</span></div>
-      ${l.deadline?`<div class="dr"><span class="dl">Deadline</span><span class="dv" style="color:var(--amber)">${l.deadline}</span></div>`:''}
+      <div class="dr"><span class="dl">งบประมาณ</span><span class="dv" style="font-family:var(--mono);color:var(--accent2);font-size:14px;font-weight:700;">${l.budget?l.budget+'M฿':'-'}</span></div>
+      ${l.deadline?`<div class="dr"><span class="dl">Deadline</span><span class="dv" style="color:var(--amber);font-weight:600;">${l.deadline}</span></div>`:''}
       ${l.tor_detail?`<div style="font-size:10px;color:var(--text2);margin-top:5px;padding:6px;background:var(--bg3);border-radius:5px;line-height:1.6;">${l.tor_detail}</div>`:''}
     </div>
+
+    ${l.source_url?`<div class="dss">
+      <div class="dst">🔗 แหล่งที่มา</div>
+      <a href="${l.source_url}" target="_blank" style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;font-size:11px;color:var(--accent2);text-decoration:none;word-break:break-all;transition:all .2s;" onmouseover="this.style.background='rgba(59,130,246,0.1)'" onmouseout="this.style.background='var(--bg3)'">
+        <span style="flex-shrink:0;">↗</span>
+        <span>${l.source_label||'ดูประกาศต้นฉบับ'} — ${l.source_url.length>50?l.source_url.substring(0,50)+'...':l.source_url}</span>
+      </a>
+    </div>`:''}
+
+    ${isAuto&&l.confidence?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+      <span style="font-size:10px;color:var(--text3);">AI Confidence:</span>
+      <div style="flex:1;height:4px;background:var(--bg3);border-radius:2px;">
+        <div style="height:100%;width:${l.confidence}%;background:${l.confidence>=80?'var(--green)':l.confidence>=60?'var(--amber)':'var(--red)'};border-radius:2px;"></div>
+      </div>
+      <span style="font-size:10px;font-family:var(--mono);color:${l.confidence>=80?'var(--green)':l.confidence>=60?'var(--amber)':'var(--red)'};">${l.confidence}%</span>
+    </div>`:''}
+
     ${l.contact_name?`<div class="dss"><div class="dst">ผู้ติดต่อ</div><div class="cc"><div class="cn">${l.contact_name}</div><div class="cr">${l.contact_role||''}</div>${l.contact_tel?`<div class="ci">📞 ${l.contact_tel}</div>`:''}${l.contact_email?`<div class="ci">✉ ${l.contact_email}</div>`:''}</div></div>`:''}
     <div class="ar">
       <button class="btn btn-g bt2" style="flex:1" onclick="editLead('${l.id}')">✏️ แก้ไข</button>
@@ -862,7 +905,7 @@ async function pasteAndParse(){
   if(!aikey){showToast('⚠️ ใส่ Anthropic API Key ในการตั้งค่าก่อน');return;}
   document.getElementById('paste-result').innerHTML='<div style="padding:14px;color:var(--text2);font-size:12px;display:flex;align-items:center;gap:8px;"><div style="width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--purple);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0;"></div>AI กำลังวิเคราะห์...</div>';
   try{
-    const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':aikey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,messages:[{role:'user',content:AI_SYS+'\n\nวิเคราะห์:\n'+txt}]})});
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':aikey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,messages:[{role:'user',content:AI_SYS+'\n\nวิเคราะห์:\n'+txt}]})});
     const d=await res.json();
     const raw=d.content[0]?.text||'[]';
     const arr=JSON.parse(raw.replace(/```json|```/g,'').trim());
@@ -927,40 +970,3 @@ window.addEventListener('load',()=>{
 </script>
 </body>
 </html>
-<script>
-// Override pasteAndParse to use Groq
-window.pasteAndParse = async function() {
-  const txt = document.getElementById('paste-txt').value.trim();
-  if (!txt) { showToast('⚠️ ใส่ข้อความก่อน'); return; }
-  const groqKey = localStorage.getItem('sb-aikey') || '';
-  if (!groqKey) { showToast('⚠️ ใส่ Groq API Key ในการตั้งค่าก่อน'); return; }
-  document.getElementById('paste-result').innerHTML = '<div style="padding:14px;color:var(--color-text-secondary);font-size:12px;display:flex;align-items:center;gap:8px;"><div style="width:16px;height:16px;border:2px solid var(--color-border-tertiary);border-top-color:var(--purple);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0;"></div>AI กำลังวิเคราะห์...</div>';
-  try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + groqKey },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        max_tokens: 1500,
-        temperature: 0.1,
-        messages: [
-          { role: 'system', content: 'ตอบเฉพาะ JSON array เท่านั้น ไม่มีข้อความอื่น ไม่มี markdown' },
-          { role: 'user', content: `วิเคราะห์ข้อความนี้และสกัดข้อมูล IT requirement ออกมาเป็น JSON array:\n[{"company":"ชื่อ","province":"จังหวัด","district":"อำเภอหรือnull","orgtype":"private|government|hospital|education|other","status":"tor|warm|cold","needs":[],"needs_detail":"","tor":"yes|soon|no","tor_detail":"","budget":null,"deadline":"","contact_name":"","contact_tel":"","confidence":0,"summary":""}]\nถ้าไม่พบ IT requirement ตอบ []\n\nข้อความ:\n${txt}` }
-        ]
-      })
-    });
-    const d = await res.json();
-    const raw = d.choices?.[0]?.message?.content || '[]';
-    const arr = JSON.parse(raw.replace(/\`\`\`json|\`\`\`/g, '').trim());
-    if (!arr.length) { document.getElementById('paste-result').innerHTML = '<div style="color:var(--amber);font-size:12px;padding:8px;">ไม่พบข้อมูล IT Requirement</div>'; return; }
-    document.getElementById('paste-result').innerHTML = arr.map(item => `<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px;margin-top:8px;">
-      <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${item.company}</div>
-      <div style="font-size:11px;color:var(--teal);margin-bottom:6px;">📍 ${item.province}${item.district ? ' · ' + item.district : ''}</div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:6px;">${item.needs_detail || ''}</div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:8px;">${item.budget ? 'งบ: ' + item.budget + 'M฿' : ''} ${item.deadline ? '· Deadline: ' + item.deadline : ''} ${item.tor === 'yes' ? '· <span style="color:var(--red)">TOR ✓</span>' : ''}</div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:6px;">confidence: <span style="font-family:var(--mono);color:${(item.confidence||0)>80?'var(--green)':'var(--amber)'};">${item.confidence||0}%</span></div>
-      <button onclick="approveFromPaste(${JSON.stringify(item).replace(/"/g,'&quot;')})" class="btn btn-p" style="width:100%;justify-content:center;font-size:12px;padding:7px;">✅ เพิ่มเข้า Map</button>
-    </div>`).join('');
-  } catch(e) { document.getElementById('paste-result').innerHTML = '<div style="color:var(--red);font-size:11px;padding:8px;">❌ ' + e.message + '</div>'; }
-};
-</script>
