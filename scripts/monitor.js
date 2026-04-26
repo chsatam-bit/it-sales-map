@@ -1,34 +1,19 @@
 // ═══════════════════════════════════════════════════════════
-//  IT SALES MAP — AUTO MONITOR (v2 · Groq + Claude fallback)
-//  ไฟล์: scripts/monitor.js
-//
-//  GitHub Secrets ที่ต้องมี:
-//    SUPABASE_URL    — https://xxxx.supabase.co
-//    SUPABASE_KEY    — anon key
-//    GROQ_KEY        — sk-... จาก console.groq.com (ฟรี)
-//    ANTHROPIC_KEY   — sk-ant-... (optional, fallback เท่านั้น)
+//  IT SALES MAP — AUTO MONITOR v3 (GPP API + Groq AI)
+//  ดึงจาก GPP API โดยตรง ไม่ต้อง scrape
 // ═══════════════════════════════════════════════════════════
 
 const { createClient } = require('@supabase/supabase-js');
 
-// ── Config ───────────────────────────────────────────────────
 const SUPABASE_URL  = process.env.SUPABASE_URL;
 const SUPABASE_KEY  = process.env.SUPABASE_KEY;
 const GROQ_KEY      = process.env.GROQ_KEY;
-const ANTHROPIC_KEY = process.env.ANTHROPIC_KEY; // optional fallback
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('❌ Missing SUPABASE_URL or SUPABASE_KEY');
-  process.exit(1);
-}
-if (!GROQ_KEY && !ANTHROPIC_KEY) {
-  console.error('❌ Need at least GROQ_KEY or ANTHROPIC_KEY');
-  process.exit(1);
-}
+if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ Missing Supabase config'); process.exit(1); }
+if (!GROQ_KEY) { console.error('❌ Missing GROQ_KEY'); process.exit(1); }
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ── Province Coordinates ─────────────────────────────────────
 const PROVINCES = {
   "กรุงเทพมหานคร":[13.75,100.50],"กระบี่":[8.09,98.91],"กาญจนบุรี":[14.00,99.54],
   "กาฬสินธุ์":[16.43,103.51],"กำแพงเพชร":[16.47,99.52],"ขอนแก่น":[16.43,102.84],
@@ -58,147 +43,22 @@ const PROVINCES = {
   "อุบลราชธานี":[15.24,104.85]
 };
 
-// ── AI Prompt (ใช้ร่วมกันทั้ง Groq และ Claude) ───────────────
-const AI_PROMPT = (content, sourceUrl) =>
-`คุณคือ AI ผู้ช่วยทีม Sales IT ประเทศไทย
-วิเคราะห์เนื้อหาด้านล่าง แล้วสกัดข้อมูลความต้องการ IT ออกมา
-ตอบเฉพาะ JSON array เท่านั้น ห้ามมีข้อความอื่น:
+// IT Keywords สำหรับ filter
+const IT_KEYWORDS = [
+  'server','network','software','security','firewall','cloud','computer',
+  'คอมพิวเตอร์','เครือข่าย','ระบบ','ซอฟต์แวร์','แม่ข่าย','สวิตช์',
+  'router','switch','wifi','wireless','storage','backup','cctv','camera',
+  'printer','scanner','ups','rack','notebook','laptop','tablet','it '
+];
 
-[{
-  "company": "ชื่อบริษัท/หน่วยงาน",
-  "province": "จังหวัดในประเทศไทย (ภาษาไทย)",
-  "district": "อำเภอ/เขต หรือ null",
-  "orgtype": "private|government|hospital|education|other",
-  "status": "tor|warm|cold",
-  "needs": ["server","software","network","security","cloud","backup","cctv","other"],
-  "needs_detail": "รายละเอียดความต้องการ IT",
-  "tor": "yes|soon|no",
-  "tor_detail": "รายละเอียด TOR/ประกวดราคา หรือ null",
-  "budget": ตัวเลขล้านบาทหรือ null,
-  "deadline": "วันที่ deadline หรือ null",
-  "contact_name": "ชื่อผู้ติดต่อ หรือ null",
-  "contact_tel": "เบอร์โทร หรือ null",
-  "confidence": 0-100,
-  "summary": "สรุป 1 ประโยคว่าทำไมน่าสนใจ"
-}]
-
-กฎ: ถ้าไม่พบ IT requirement ให้ตอบ [] เท่านั้น
-status=tor: มีประกวดราคา/e-bidding/TOR ชัดเจน
-budget: แปลงบาทเป็นล้าน (2,500,000 = 2.5)
-max 5 รายการ ห้าม hallucinate
-
-URL: ${sourceUrl}
-เนื้อหา:
-${content}`;
-
-// ── AI Provider: Groq (ฟรี) ──────────────────────────────────
-async function callGroq(content, sourceUrl) {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile', // ดีสุดใน free tier
-      max_tokens: 1500,
-      temperature: 0.1, // ต่ำ = stable output สำหรับ JSON
-      messages: [
-        {
-          role: 'system',
-          content: 'คุณตอบเฉพาะ JSON array เท่านั้น ไม่มีข้อความอื่น ไม่มี markdown'
-        },
-        {
-          role: 'user',
-          content: AI_PROMPT(content, sourceUrl)
-        }
-      ],
-    }),
-    signal: AbortSignal.timeout(30000),
-  });
-
-  if (res.status === 429) throw new Error('GROQ_RATE_LIMIT');
-  if (!res.ok) throw new Error(`Groq ${res.status}`);
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '[]';
+function isITRelated(text) {
+  const lower = (text || '').toLowerCase();
+  return IT_KEYWORDS.some(kw => lower.includes(kw.toLowerCase()));
 }
 
-// ── AI Provider: Claude Haiku (fallback) ─────────────────────
-async function callClaude(content, sourceUrl) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1500,
-      messages: [{ role: 'user', content: AI_PROMPT(content, sourceUrl) }],
-    }),
-    signal: AbortSignal.timeout(30000),
-  });
-
-  if (!res.ok) throw new Error(`Claude ${res.status}`);
-  const data = await res.json();
-  return data.content?.[0]?.text || '[]';
-}
-
-// ── AI Parse พร้อม fallback อัตโนมัติ ───────────────────────
-async function parseWithAI(content, sourceUrl) {
-  let rawText = '[]';
-  let provider = 'none';
-
-  // 1. ลอง Groq ก่อน (ฟรี)
-  if (GROQ_KEY) {
-    try {
-      rawText = await callGroq(content, sourceUrl);
-      provider = 'Groq';
-    } catch (e) {
-      if (e.message === 'GROQ_RATE_LIMIT') {
-        console.log('  ⚠️  Groq rate limit — fallback to Claude');
-      } else {
-        console.log(`  ⚠️  Groq error: ${e.message} — fallback to Claude`);
-      }
-      rawText = null;
-    }
-  }
-
-  // 2. fallback Claude ถ้า Groq ล้มเหลว
-  if (!rawText && ANTHROPIC_KEY) {
-    try {
-      rawText = await callClaude(content, sourceUrl);
-      provider = 'Claude';
-    } catch (e) {
-      console.log(`  ❌ Claude error: ${e.message}`);
-      return [];
-    }
-  }
-
-  if (!rawText) return [];
-
-  // Parse JSON
-  try {
-    const clean = rawText
-      .replace(/```json|```/g, '')
-      .replace(/^[^[\{]*/, '') // ตัด text ก่อน [ หรือ {
-      .replace(/[^}\]]*$/, '') // ตัด text หลัง ] หรือ }
-      .trim();
-    const parsed = JSON.parse(clean);
-    const arr = Array.isArray(parsed) ? parsed : [];
-    if (arr.length > 0) console.log(`  🤖 [${provider}] parsed ${arr.length} lead(s)`);
-    return arr;
-  } catch (e) {
-    console.log(`  ⚠️  JSON parse failed: ${e.message}`);
-    console.log(`  Raw: ${rawText.slice(0, 200)}`);
-    return [];
-  }
-}
-
-// ── Fetch Page ───────────────────────────────────────────────
-async function fetchPage(url) {
+// ── ดึงจาก GPP API โดยตรง ───────────────────────────────────
+async function fetchGPP(keyword, page = 1) {
+  const url = `https://process5.gprocurement.go.th/egp-agpc01-web/announcement?keywordSearch=${encodeURIComponent(keyword)}&page=${page}`;
   try {
     const res = await fetch(url, {
       headers: {
@@ -210,130 +70,213 @@ async function fetchPage(url) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const html = await res.text();
-    return html
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-      .replace(/\s+/g, ' ').trim()
-      .slice(0, 4000);
-  } catch (e) {
-    console.log(`  ⚠️  Fetch failed: ${e.message}`);
-    return null;
+    return parseGPPHTML(html, keyword);
+  } catch(e) {
+    console.log(`  ⚠️  GPP fetch error: ${e.message}`);
+    return [];
   }
 }
 
-// ── Dedup ────────────────────────────────────────────────────
+function parseGPPHTML(html, keyword) {
+  const items = [];
+  // Extract table rows from GPP
+  const rowRegex = /<tr[^>]*>[\s\S]*?<\/tr>/gi;
+  const rows = html.match(rowRegex) || [];
+
+  for (const row of rows) {
+    const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi) || [];
+    if (cells.length < 4) continue;
+
+    const getText = (cell) => cell.replace(/<[^>]+>/g, '').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').trim();
+
+    const org    = getText(cells[0] || '');
+    const title  = getText(cells[1] || '');
+    const budget = getText(cells[2] || '');
+    const status = getText(cells[3] || '');
+
+    if (!org || !title || org.length < 3) continue;
+    if (!isITRelated(title) && !isITRelated(org)) continue;
+
+    // หา project number จาก link
+    const projMatch = row.match(/projectId=([^"&\s]+)/);
+    const projId = projMatch ? projMatch[1] : '';
+    const sourceUrl = projId
+      ? `https://process5.gprocurement.go.th/egp-agpc01-web/announcement/detail?projectId=${projId}`
+      : `https://process5.gprocurement.go.th/egp-agpc01-web/announcement?keywordSearch=${encodeURIComponent(keyword)}`;
+
+    // หา deadline จาก text
+    const dateMatch = title.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/);
+    const deadline = dateMatch ? dateMatch[1] : null;
+
+    // แปลงงบประมาณ
+    const budgetNum = parseFloat(budget.replace(/,/g, '')) || 0;
+    const budgetM = budgetNum > 0 ? (budgetNum / 1000000).toFixed(2) : null;
+
+    // หาจังหวัดจาก org name
+    let province = 'กรุงเทพมหานคร';
+    for (const prov of Object.keys(PROVINCES)) {
+      if (org.includes(prov) || title.includes(prov)) { province = prov; break; }
+    }
+
+    items.push({ org, title, budgetM, status, province, sourceUrl, deadline, keyword });
+  }
+  return items;
+}
+
+// ── Groq AI วิเคราะห์ batch ──────────────────────────────────
+async function analyzeWithGroq(items) {
+  if (!items.length) return [];
+
+  const prompt = `วิเคราะห์รายการจัดซื้อจัดจ้างภาครัฐด้านล่าง แล้วสกัดออกมาเป็น JSON array
+ตอบเฉพาะ JSON array เท่านั้น ไม่มีข้อความอื่น:
+[{
+  "company": "ชื่อหน่วยงาน",
+  "province": "จังหวัด",
+  "district": "อำเภอหรือ null",
+  "orgtype": "government|hospital|education|private|other",
+  "status": "tor|warm|cold",
+  "needs": ["server","software","network","security","cloud","backup","cctv","other"],
+  "needs_detail": "รายละเอียด",
+  "tor": "yes|soon|no",
+  "budget": ตัวเลขล้านบาท,
+  "deadline": "วันที่หรือ null",
+  "source_url": "URL",
+  "confidence": 0-100,
+  "summary": "สรุป 1 ประโยค"
+}]
+
+รายการ:
+${items.map((it,i) => `${i+1}. หน่วยงาน: ${it.org}
+   โครงการ: ${it.title}
+   งบ: ${it.budgetM ? it.budgetM+'M฿' : 'ไม่ระบุ'}
+   สถานะ: ${it.status}
+   URL: ${it.sourceUrl}
+   จังหวัด (เบื้องต้น): ${it.province}`).join('\n\n')}`;
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        max_tokens: 3000,
+        temperature: 0.1,
+        messages: [
+          { role: 'system', content: 'ตอบเฉพาะ JSON array เท่านั้น ไม่มี markdown ไม่มีข้อความอื่น' },
+          { role: 'user', content: prompt }
+        ]
+      }),
+      signal: AbortSignal.timeout(45000),
+    });
+    if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || '[]';
+    const clean = text.replace(/```json|```/g, '').replace(/^[^\[]*/, '').replace(/[^\]]*$/, '').trim();
+    return JSON.parse(clean);
+  } catch(e) {
+    console.log(`  ⚠️  Groq error: ${e.message}`);
+    return [];
+  }
+}
+
 async function isDuplicate(company, province) {
-  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const { data } = await sb.from('leads')
-    .select('id').eq('company', company).eq('province', province)
+  const cutoff = new Date(Date.now() - 30*24*60*60*1000).toISOString();
+  const { data } = await sb.from('leads').select('id')
+    .eq('company', company).eq('province', province)
     .gte('created_at', cutoff).limit(1);
   return data && data.length > 0;
 }
 
-// ── Insert Lead ──────────────────────────────────────────────
-async function insertLead(item, source, threshold) {
-  const coords = PROVINCES[item.province] || [13.0, 101.0];
-  const j = () => (Math.random() - 0.5) * 0.3;
-  const { error } = await sb.from('leads').insert({
-    company: item.company, province: item.province,
-    district: item.district || null, orgtype: item.orgtype || 'other',
-    status: item.status || 'cold', needs: item.needs || [],
-    needs_detail: item.needs_detail || null,
-    tor: item.tor || 'no', tor_detail: item.tor_detail || null,
-    budget: item.budget || null, deadline: item.deadline || null,
-    contact_name: item.contact_name || null, contact_tel: item.contact_tel || null,
-    source_url: source.url, source: 'ai_auto', source_label: source.name,
-    confidence: item.confidence || 0,
-    lat: coords[0] + j(), lng: coords[1] + j(),
-    approved: (item.confidence || 0) >= threshold,
+async function insertLead(lead, threshold) {
+  const coords = PROVINCES[lead.province] || [13.0, 101.0];
+  const j = () => (Math.random()-0.5)*0.3;
+  await sb.from('leads').insert({
+    company: lead.company, province: lead.province,
+    district: lead.district || null, orgtype: lead.orgtype || 'government',
+    status: lead.status || 'cold', needs: lead.needs || [],
+    needs_detail: lead.needs_detail || null,
+    tor: lead.tor || 'no', budget: lead.budget || null,
+    deadline: lead.deadline || null,
+    source_url: lead.source_url || null,
+    source: 'ai_auto', source_label: 'GPP e-GP',
+    confidence: lead.confidence || 0,
+    lat: coords[0]+j(), lng: coords[1]+j(),
+    approved: (lead.confidence||0) >= threshold,
   });
-  if (error) throw error;
 }
 
 // ── Main ─────────────────────────────────────────────────────
 async function main() {
-  const startTime = Date.now();
-  const aiMode = GROQ_KEY
-    ? (ANTHROPIC_KEY ? 'Groq (primary) + Claude (fallback)' : 'Groq only')
-    : 'Claude only';
-
-  console.log(`\n🚀 IT Sales Auto Monitor — ${new Date().toISOString()}`);
-  console.log(`🤖 AI: ${aiMode}`);
+  const start = Date.now();
+  console.log(`\n🚀 IT Sales Auto Monitor v3 — ${new Date().toISOString()}`);
+  console.log(`🤖 AI: Groq (llama-3.3-70b-versatile)`);
   console.log('='.repeat(55));
 
-  // Settings
   const { data: rows } = await sb.from('settings').select('*');
-  const s = Object.fromEntries((rows || []).map(r => [r.key, r.value]));
-  const threshold = parseInt(s.auto_approve_threshold || '80');
-  console.log(`⚙️  Auto-approve: confidence ≥ ${threshold}%`);
+  const settings = Object.fromEntries((rows||[]).map(r=>[r.key,r.value]));
+  const threshold = parseInt(settings.auto_approve_threshold || '80');
 
-  // Sources
-  const { data: sources } = await sb.from('monitor_sources').select('*').eq('active', true);
-  if (!sources?.length) { console.log('⚠️  No active sources'); return; }
-  console.log(`📡 Scanning ${sources.length} source(s)`);
+  // Keywords ที่จะ scan บน GPP
+  const SEARCH_KEYWORDS = [
+    'IT', 'server', 'network', 'software', 'security',
+    'คอมพิวเตอร์', 'ระบบสารสนเทศ', 'firewall', 'cloud', 'CCTV'
+  ];
 
-  let totalNew = 0, totalChecked = 0;
+  let allItems = [];
+  let totalNew = 0;
 
-  for (const source of sources) {
-    console.log(`\n📌 ${source.name}`);
-    const log = { source_id: source.id, source_name: source.name, leads_found: 0, leads_new: 0 };
-
-    try {
-      const content = await fetchPage(source.url);
-      if (!content || content.length < 80) {
-        log.status = 'no_content'; console.log('   ⏭  No content');
-        await sb.from('monitor_logs').insert({ ...log, duration_ms: Date.now()-startTime });
-        continue;
-      }
-
-      // Keyword filter
-      const kws = source.keywords || [];
-      if (kws.length && !kws.some(k => content.toLowerCase().includes(k.toLowerCase()))) {
-        log.status = 'no_keyword_match'; console.log(`   ⏭  No keyword match`);
-        await sb.from('monitor_logs').insert({ ...log, duration_ms: Date.now()-startTime });
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
-      }
-
-      // AI Parse
-      const leads = await parseWithAI(content, source.url);
-      log.leads_found = leads.length;
-      totalChecked += leads.length;
-
-      // Dedup + Insert
-      let newCount = 0;
-      for (const lead of leads) {
-        if (!lead.company || !lead.province) continue;
-        if (await isDuplicate(lead.company, lead.province)) {
-          console.log(`   ♻️  Dup: ${lead.company}`);
-          continue;
-        }
-        await insertLead(lead, source, threshold);
-        const ok = (lead.confidence || 0) >= threshold;
-        console.log(`   ✅ +${lead.company} (${lead.province}) ${lead.confidence}% ${ok ? '→ approved' : '→ pending'}`);
-        newCount++; totalNew++;
-      }
-
-      log.leads_new = newCount; log.status = 'success';
-      await sb.from('monitor_sources').update({
-        last_checked: new Date().toISOString(), last_found: leads.length
-      }).eq('id', source.id);
-
-    } catch (err) {
-      console.log(`   ❌ ${err.message}`);
-      log.status = 'error'; log.error_msg = err.message;
-    }
-
-    await sb.from('monitor_logs').insert({ ...log, duration_ms: Date.now()-startTime });
-    await new Promise(r => setTimeout(r, 3000)); // rate limit gap
+  // ดึงข้อมูลจาก GPP ทีละ keyword
+  for (const kw of SEARCH_KEYWORDS) {
+    console.log(`\n🔍 GPP keyword: "${kw}"`);
+    const items = await fetchGPP(kw, 1);
+    console.log(`   พบ: ${items.length} รายการ IT`);
+    allItems = allItems.concat(items);
+    await new Promise(r => setTimeout(r, 1500)); // rate limit
   }
 
+  // dedupe by title
+  const seen = new Set();
+  const unique = allItems.filter(it => {
+    if (seen.has(it.title)) return false;
+    seen.add(it.title); return true;
+  });
+  console.log(`\n📊 รวม unique IT projects: ${unique.length}`);
+
+  // วิเคราะห์ด้วย Groq ทีละ batch 10 รายการ
+  const BATCH = 10;
+  for (let i = 0; i < unique.length; i += BATCH) {
+    const batch = unique.slice(i, i+BATCH);
+    console.log(`\n🤖 Groq analyzing batch ${Math.floor(i/BATCH)+1}/${Math.ceil(unique.length/BATCH)} (${batch.length} items)...`);
+
+    const analyzed = await analyzeWithGroq(batch);
+
+    for (const lead of analyzed) {
+      if (!lead.company || !lead.province) continue;
+      if (await isDuplicate(lead.company, lead.province)) {
+        console.log(`   ♻️  Dup: ${lead.company}`);
+        continue;
+      }
+      await insertLead(lead, threshold);
+      const ok = (lead.confidence||0) >= threshold;
+      console.log(`   ✅ +${lead.company} (${lead.province}) ${lead.confidence}% ${ok?'→ approved':'→ review'}`);
+      totalNew++;
+    }
+
+    if (i + BATCH < unique.length) await new Promise(r => setTimeout(r, 3000));
+  }
+
+  // Log to DB
+  await sb.from('monitor_logs').insert({
+    source_name: 'GPP e-GP API',
+    leads_found: unique.length,
+    leads_new: totalNew,
+    status: 'success',
+    duration_ms: Date.now()-start,
+  });
+
   console.log('\n' + '='.repeat(55));
-  console.log(`✅ Done in ${((Date.now()-startTime)/1000).toFixed(1)}s`);
-  console.log(`📊 Potential: ${totalChecked} | New: ${totalNew}`);
+  console.log(`✅ Done in ${((Date.now()-start)/1000).toFixed(1)}s`);
+  console.log(`📊 IT projects found: ${unique.length} | New leads: ${totalNew}`);
   console.log(`⏰ Next: tomorrow 07:00 น. ไทย\n`);
 }
 
